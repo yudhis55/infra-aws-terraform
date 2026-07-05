@@ -3,6 +3,7 @@
 *.tfstate.backup
 terraform.tfvars
 *.tfplan
+tfplan
 *.out
 plan.txt
 phase*_plan.txt
