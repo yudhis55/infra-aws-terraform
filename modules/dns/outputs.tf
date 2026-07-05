@@ -43,6 +43,11 @@ output "admin_record_fqdn" {
   value       = local.records_enabled && var.create_admin_subdomain ? aws_route53_record.admin[0].fqdn : ""
 }
 
+output "cdn_record_fqdn" {
+  description = "CDN subdomain CNAME record FQDN"
+  value       = local.records_enabled && var.enable_cdn_cname && var.cloudfront_domain_name != "" ? aws_route53_record.cdn[0].fqdn : ""
+}
+
 output "health_check_alarm_name" {
   description = "CloudWatch alarm name for health check failures"
   value       = local.health_checks_enabled ? aws_cloudwatch_metric_alarm.route53_health_check[0].alarm_name : ""
@@ -65,5 +70,6 @@ output "dns_records_summary" {
     www_subdomain   = local.records_enabled && var.enable_www_subdomain ? "www.${var.domain_name} -> ${var.alb_dns_name}" : "Not created"
     api_subdomain   = local.records_enabled && var.create_api_subdomain ? "api.${var.domain_name} -> ${var.alb_dns_name}" : "Not created"
     admin_subdomain = local.records_enabled && var.create_admin_subdomain ? "admin.${var.domain_name} -> ${var.alb_dns_name}" : "Not created"
+    cdn_subdomain   = local.records_enabled && var.enable_cdn_cname && var.cloudfront_domain_name != "" ? "${var.cdn_subdomain}.${var.domain_name} -> ${var.cloudfront_domain_name}" : "Not created"
   }
 }

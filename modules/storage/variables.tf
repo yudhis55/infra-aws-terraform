@@ -12,7 +12,12 @@ variable "environment" {
 variable "cors_allowed_origins" {
   description = "Origins allowed to upload objects through browser presigned URLs"
   type        = list(string)
-  default     = ["*"]
+  default     = []
+
+  validation {
+    condition     = alltrue([for origin in var.cors_allowed_origins : origin != "*" && can(regex("^https?://", origin))])
+    error_message = "S3 CORS origins must be explicit HTTP(S) origins; wildcard '*' is not allowed."
+  }
 }
 
 variable "public_read_enabled" {

@@ -1,3 +1,11 @@
+terraform {
+  required_providers {
+    aws = {
+      source = "hashicorp/aws"
+    }
+  }
+}
+
 resource "aws_acm_certificate" "main" {
   domain_name               = var.domain_name
   subject_alternative_names = var.subject_alternative_names
@@ -8,7 +16,7 @@ resource "aws_acm_certificate" "main" {
   }
 
   tags = {
-    Name        = "${var.project_name}-${var.environment}-alb-certificate"
+    Name        = "${var.project_name}-${var.environment}-${var.certificate_purpose}-certificate"
     Environment = var.environment
   }
 }
@@ -35,4 +43,3 @@ resource "aws_acm_certificate_validation" "main" {
   certificate_arn         = aws_acm_certificate.main.arn
   validation_record_fqdns = [for record in aws_route53_record.validation : record.fqdn]
 }
-

@@ -29,3 +29,20 @@ variable "price_class" {
   default     = "PriceClass_100"
 }
 
+variable "aliases" {
+  description = "Custom domain aliases for the CloudFront distribution"
+  type        = list(string)
+  default     = []
+}
+
+variable "viewer_certificate_acm_arn" {
+  description = "ACM certificate ARN for custom CloudFront aliases. Must be issued in us-east-1."
+  type        = string
+  default     = ""
+}
+
+variable "public_domain_name" {
+  description = "Preferred public media domain exposed to the application"
+  type        = string
+  default     = ""
+}

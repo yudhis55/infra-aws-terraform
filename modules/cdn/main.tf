@@ -1,5 +1,6 @@
 locals {
-  origin_id = "${var.project_name}-${var.environment}-uploads-origin"
+  origin_id              = "${var.project_name}-${var.environment}-uploads-origin"
+  use_custom_certificate = var.viewer_certificate_acm_arn != "" && length(var.aliases) > 0
 }
 
 resource "aws_cloudfront_origin_access_control" "uploads" {
@@ -15,6 +16,7 @@ resource "aws_cloudfront_distribution" "uploads" {
   is_ipv6_enabled = true
   price_class     = var.price_class
   comment         = "${var.project_name} ${var.environment} upload media CDN"
+  aliases         = var.aliases
 
   origin {
     domain_name              = var.bucket_regional_domain_name
@@ -45,7 +47,10 @@ resource "aws_cloudfront_distribution" "uploads" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    cloudfront_default_certificate = local.use_custom_certificate ? null : true
+    acm_certificate_arn            = local.use_custom_certificate ? var.viewer_certificate_acm_arn : null
+    ssl_support_method             = local.use_custom_certificate ? "sni-only" : null
+    minimum_protocol_version       = local.use_custom_certificate ? "TLSv1.2_2021" : null
   }
 
   tags = {
@@ -75,4 +80,3 @@ resource "aws_s3_bucket_policy" "allow_cloudfront" {
     ]
   })
 }
-

@@ -26,12 +26,39 @@ module "ecr" {
   project_name = var.project_name
 }
 
+locals {
+  effective_app_base_url = var.app_base_url != "" ? var.app_base_url : (
+    var.domain_name != "" ? "https://${var.domain_name}" : ""
+  )
+  effective_s3_cors_allowed_origins = length(var.s3_cors_allowed_origins) > 0 ? var.s3_cors_allowed_origins : compact([local.effective_app_base_url])
+  media_domain_enabled              = var.enable_cdn_cname && var.domain_name != "" && var.route53_zone_id != ""
+  media_domain_name                 = local.media_domain_enabled ? "${var.cdn_subdomain}.${var.domain_name}" : ""
+  media_certificate_arn             = try(module.cloudfront_certificate[0].certificate_arn, "")
+  cdn_dns_target                    = local.media_domain_enabled ? module.cdn.distribution_domain_name : var.cloudfront_domain_name
+}
+
 module "storage" {
   source = "../../modules/storage"
 
   project_name         = var.project_name
   environment          = var.environment
-  cors_allowed_origins = var.s3_cors_allowed_origins
+  cors_allowed_origins = local.effective_s3_cors_allowed_origins
+}
+
+module "cloudfront_certificate" {
+  count  = local.media_domain_enabled ? 1 : 0
+  source = "../../modules/certificate"
+
+  providers = {
+    aws = aws.us_east_1
+  }
+
+  project_name              = var.project_name
+  environment               = var.environment
+  certificate_purpose       = "media"
+  domain_name               = local.media_domain_name
+  hosted_zone_id            = var.route53_zone_id
+  subject_alternative_names = []
 }
 
 module "cdn" {
@@ -43,6 +70,9 @@ module "cdn" {
   bucket_arn                  = module.storage.bucket_arn
   bucket_regional_domain_name = module.storage.bucket_regional_domain_name
   price_class                 = var.cloudfront_price_class
+  aliases                     = local.media_domain_enabled ? [local.media_domain_name] : []
+  viewer_certificate_acm_arn  = local.media_certificate_arn
+  public_domain_name          = local.media_domain_name
 }
 
 module "certificate" {
@@ -51,6 +81,7 @@ module "certificate" {
 
   project_name              = var.project_name
   environment               = var.environment
+  certificate_purpose       = "alb"
   domain_name               = var.domain_name
   hosted_zone_id            = var.route53_zone_id
   subject_alternative_names = var.enable_www_subdomain ? ["www.${var.domain_name}"] : []
@@ -217,12 +248,12 @@ module "dns" {
   mx_records                     = var.mx_records
   enable_txt_verification_record = var.enable_txt_verification_record
   txt_verification_records       = var.txt_verification_records
-  enable_cdn_cname               = var.enable_cdn_cname
+  enable_cdn_cname               = local.media_domain_enabled
   cdn_subdomain                  = var.cdn_subdomain
-  cloudfront_domain_name         = var.cloudfront_domain_name
+  cloudfront_domain_name         = local.cdn_dns_target
   enable_query_logging           = var.enable_query_logging
   log_retention_days             = var.log_retention_days
   sns_topic_arn                  = module.monitoring.sns_topic_arn
 
-  depends_on = [module.ecs, module.monitoring]
+  depends_on = [module.ecs, module.monitoring, module.cdn]
 }

@@ -17,3 +17,6 @@ Bucket tidak memberi public read policy. Media publik disajikan melalui module
 `cdn` dengan CloudFront Origin Access Control. Objek sensitif seperti pembayaran
 dan verifikasi tetap diakses melalui signed URL atau route aplikasi.
 
+CORS hanya dipakai untuk browser upload lewat presigned URL. Caller harus
+mengirim origin eksplisit seperti `https://eepistore.web.id`; wildcard tidak
+diterima untuk baseline production.

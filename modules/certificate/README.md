@@ -1,7 +1,6 @@
 # Module: certificate
 
-Membuat ACM certificate regional untuk ALB dan melakukan DNS validation di
-Route53.
+Membuat ACM certificate dan melakukan DNS validation di Route53.
 
 ## Resource Utama
 
@@ -11,6 +10,8 @@ Route53.
 
 ## Catatan Operasional
 
-Module ini untuk ALB regional. Jika CloudFront memakai custom domain, certificate
-CloudFront harus dibuat di `us-east-1` secara terpisah.
-
+Untuk ALB regional, panggil module dengan provider default region aplikasi.
+Untuk CloudFront custom domain, panggil module dengan provider alias
+`us-east-1`, karena CloudFront hanya menerima ACM viewer certificate dari region
+tersebut. Gunakan `certificate_purpose` agar tag certificate mudah dibedakan di
+AWS.

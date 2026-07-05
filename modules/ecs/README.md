@@ -31,5 +31,10 @@ Task definition memakai `bridge` network mode dengan dynamic host port mapping.
 Karena itu ECS service yang mendaftarkan target `instance:dynamic-port` ke ALB,
 bukan Auto Scaling Group.
 
+Container aplikasi memakai read-only root filesystem. Runtime tetap mendapat
+tmpfs kecil di `/tmp` untuk kebutuhan sementara Node/Prisma, sementara media
+publik dilayani langsung oleh CloudFront sehingga Next image optimizer tidak
+perlu menulis cache runtime.
+
 Untuk production, `enable_https=true` wajib disertai `acm_certificate_arn` yang
 sudah valid. Self-signed certificate tidak dipakai.

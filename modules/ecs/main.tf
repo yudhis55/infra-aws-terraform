@@ -219,9 +219,18 @@ resource "aws_ecs_task_definition" "app" {
 
   container_definitions = jsonencode([
     {
-      name      = "app"
-      image     = var.ecr_image
-      essential = true
+      name                   = "app"
+      image                  = var.ecr_image
+      essential              = true
+      readonlyRootFilesystem = true
+
+      linuxParameters = {
+        tmpfs = [{
+          containerPath = "/tmp"
+          size          = 64
+          mountOptions  = ["rw", "noexec", "nosuid", "nodev"]
+        }]
+      }
 
       portMappings = [{
         containerPort = 3000

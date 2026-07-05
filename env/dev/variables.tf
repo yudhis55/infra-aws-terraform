@@ -208,7 +208,12 @@ variable "health_check_path" {
 variable "s3_cors_allowed_origins" {
   description = "Origins allowed to upload files to S3 through presigned URLs"
   type        = list(string)
-  default     = ["*"]
+  default     = []
+
+  validation {
+    condition     = alltrue([for origin in var.s3_cors_allowed_origins : origin != "*" && can(regex("^https?://", origin))])
+    error_message = "S3 CORS origins must be explicit HTTP(S) origins; wildcard '*' is not allowed."
+  }
 }
 
 variable "smtp_host" {
@@ -375,17 +380,17 @@ variable "txt_verification_records" {
 variable "enable_cdn_cname" {
   description = "Create CNAME record for CloudFront CDN"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "cdn_subdomain" {
   description = "CDN subdomain name (e.g., 'cdn' for cdn.example.com)"
   type        = string
-  default     = "cdn"
+  default     = "media"
 }
 
 variable "cloudfront_domain_name" {
-  description = "CloudFront distribution domain name"
+  description = "Deprecated manual CloudFront DNS target override. Leave empty to use this environment's CDN module output."
   type        = string
   default     = ""
 }

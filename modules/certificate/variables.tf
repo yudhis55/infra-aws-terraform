@@ -8,8 +8,14 @@ variable "environment" {
   type        = string
 }
 
+variable "certificate_purpose" {
+  description = "Short purpose label used in tags, for example alb or media"
+  type        = string
+  default     = "alb"
+}
+
 variable "domain_name" {
-  description = "Primary domain name for the ALB certificate"
+  description = "Primary domain name for the certificate"
   type        = string
 }
 
@@ -23,4 +29,3 @@ variable "subject_alternative_names" {
   type        = list(string)
   default     = []
 }
-

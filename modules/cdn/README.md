@@ -11,7 +11,10 @@ melalui Origin Access Control.
 
 ## Catatan Operasional
 
-Module ini memakai default CloudFront certificate. Jika ingin custom media
-domain, tambahkan certificate ACM di `us-east-1` dan alias CloudFront secara
-terpisah.
+Module ini bisa memakai default CloudFront domain atau custom media domain.
+Untuk production project ini, caller mengirim alias `media.eepistore.web.id`
+dan ACM certificate dari `us-east-1` karena CloudFront hanya menerima viewer
+certificate ACM dari region tersebut.
 
+Bucket origin tetap private. CloudFront membaca objek melalui Origin Access
+Control, lalu bucket policy membatasi akses ke ARN distribution ini saja.

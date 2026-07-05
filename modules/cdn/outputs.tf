@@ -15,6 +15,5 @@ output "distribution_domain_name" {
 
 output "public_base_url" {
   description = "Base URL for public media objects"
-  value       = "https://${aws_cloudfront_distribution.uploads.domain_name}"
+  value       = "https://${var.public_domain_name != "" ? var.public_domain_name : aws_cloudfront_distribution.uploads.domain_name}"
 }
-

@@ -130,16 +130,16 @@ txt_verification_records = [
 ### 7. CDN (CloudFront CNAME)
 
 ```hcl
-# Controlled by: enable_cdn_cname = true (default: false)
-cdn.example.com  CNAME  abc123.cloudfront.net
+# Controlled by: enable_cdn_cname = true
+media.example.com  CNAME  abc123.cloudfront.net
 ```
 
-**Use Case**: Serve static assets from CloudFront
+**Use Case**: Serve public media from CloudFront
 **Configure**:
 
 ```hcl
 enable_cdn_cname = true
-cdn_subdomain = "cdn"
+cdn_subdomain = "media"
 cloudfront_domain_name = "abc123.cloudfront.net"
 ```
 
