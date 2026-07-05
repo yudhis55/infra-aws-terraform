@@ -54,6 +54,10 @@ implemented evidence in BAB 4.
   the effective attachments.
 - CloudFront TLS finding: accepted as computed-plan context. The plan must show
   `minimum_protocol_version = "TLSv1.2_2021"` and `sni-only`.
+- ALB TLS finding: accepted as conditional-resource scanner context. The
+  non-HTTPS listener in `modules/ecs/asg.tf` is only created when HTTPS is
+  disabled; production sets HTTPS enabled and creates the TLS listener plus
+  HTTP redirect.
 - ECR customer-managed KMS key: accepted for the existing repository baseline.
   Switching encryption can require replacing or recreating the repository, so
   it is not changed before first apply.
@@ -81,6 +85,13 @@ implemented evidence in BAB 4.
   are private, encrypted, versioned where relevant, and protected by public
   access block; full logging/KMS-per-bucket hardening can be added after the
   first controlled deployment.
+- CloudWatch Logs customer-managed KMS: deferred. Log groups now retain evidence
+  for 365 days, but per-log-group CMK policies for CloudWatch Logs are deferred
+  until after first deployment to avoid adding untested log-delivery key policy
+  risk.
+- SNS customer-managed KMS: deferred. Alarm notifications are encrypted with
+  AWS managed SNS encryption for the baseline; a dedicated CMK can be added
+  later if the thesis scope expands to stricter key ownership controls.
 - Secrets Manager automatic rotation: deferred. Rotation requires a tested
   rotation Lambda/strategy and should not be enabled without validating app and
   RDS Proxy behavior.
