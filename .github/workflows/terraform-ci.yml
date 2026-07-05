@@ -113,6 +113,7 @@ jobs:
       TF_VAR_app_image_uri: ${{ vars.TF_VAR_APP_IMAGE_URI }}
       TF_VAR_domain_name: ${{ vars.TF_VAR_DOMAIN_NAME }}
       TF_VAR_route53_zone_id: ${{ vars.TF_VAR_ROUTE53_ZONE_ID }}
+      TF_VAR_enable_https: ${{ vars.TF_VAR_ENABLE_HTTPS }}
       TF_VAR_acm_certificate_arn: ${{ vars.TF_VAR_ACM_CERTIFICATE_ARN }}
       TF_VAR_app_base_url: ${{ vars.TF_VAR_APP_BASE_URL }}
       TF_VAR_auth_secret: ${{ secrets.TF_VAR_AUTH_SECRET }}
@@ -167,6 +168,7 @@ jobs:
       TF_VAR_app_image_uri: ${{ vars.TF_VAR_APP_IMAGE_URI }}
       TF_VAR_domain_name: ${{ vars.TF_VAR_DOMAIN_NAME }}
       TF_VAR_route53_zone_id: ${{ vars.TF_VAR_ROUTE53_ZONE_ID }}
+      TF_VAR_enable_https: ${{ vars.TF_VAR_ENABLE_HTTPS }}
       TF_VAR_acm_certificate_arn: ${{ vars.TF_VAR_ACM_CERTIFICATE_ARN }}
       TF_VAR_app_base_url: ${{ vars.TF_VAR_APP_BASE_URL }}
       TF_VAR_auth_secret: ${{ secrets.TF_VAR_AUTH_SECRET }}
