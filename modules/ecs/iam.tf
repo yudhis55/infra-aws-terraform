@@ -66,25 +66,6 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-# Custom policy untuk ECR pull
-resource "aws_iam_role_policy" "ecs_task_execution_ecr" {
-  name_prefix = "${var.project_name}-ecs-task-ecr-"
-  role        = aws_iam_role.ecs_task_execution_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "ecr:GetAuthorizationToken",
-        "ecr:BatchGetImage",
-        "ecr:GetDownloadUrlForLayer"
-      ]
-      Resource = "*"
-    }]
-  })
-}
-
 # Allow ECS agent to inject Secrets Manager values into container env vars.
 resource "aws_iam_role_policy" "ecs_task_execution_secrets" {
   name_prefix = "${var.project_name}-ecs-task-secrets-read-"
