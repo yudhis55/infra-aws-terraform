@@ -105,13 +105,6 @@ variable "enable_deletion_protection" {
   default     = true
 }
 
-# ==================== RDS PROXY CONFIGURATION ====================
-variable "enable_rds_proxy" {
-  description = "Enable RDS Proxy for connection pooling"
-  type        = bool
-  default     = false
-}
-
 variable "proxy_max_connections" {
   description = "Max connections for RDS Proxy"
   type        = number
@@ -216,18 +209,6 @@ variable "s3_cors_allowed_origins" {
   description = "Origins allowed to upload files to S3 through presigned URLs"
   type        = list(string)
   default     = ["*"]
-}
-
-variable "s3_public_read_enabled" {
-  description = "Deprecated. Keep false; media is served through CloudFront OAC."
-  type        = bool
-  default     = false
-}
-
-variable "s3_public_read_prefixes" {
-  description = "S3 object key prefixes that can be publicly read"
-  type        = list(string)
-  default     = ["products/*", "avatars/*"]
 }
 
 variable "smtp_host" {
@@ -335,17 +316,6 @@ variable "create_hosted_zone" {
   description = "Create Route53 hosted zone (set to false if zone already exists)"
   type        = bool
   default     = false
-}
-
-variable "alb_zone_id" {
-  description = "Deprecated. ALB zone ID is now read from the ALB output."
-  type        = string
-  default     = "Z1LMS91P8CMLE5" # ap-southeast-3 zone ID, change for other regions
-
-  validation {
-    condition     = length(var.alb_zone_id) > 0
-    error_message = "ALB zone ID must be provided for Route53 alias records."
-  }
 }
 
 variable "route53_zone_id" {
