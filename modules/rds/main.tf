@@ -32,14 +32,16 @@ resource "aws_db_instance" "main" {
   publicly_accessible  = false
 
   # Security & Networking
-  vpc_security_group_ids = [var.rds_security_group_id]
-  parameter_group_name   = aws_db_parameter_group.main.name
+  vpc_security_group_ids              = [var.rds_security_group_id]
+  parameter_group_name                = aws_db_parameter_group.main.name
+  iam_database_authentication_enabled = true
 
   # Backup & Maintenance
-  backup_retention_period = var.backup_retention_period
-  backup_window           = var.backup_window
-  maintenance_window      = var.maintenance_window
-  copy_tags_to_snapshot   = true
+  backup_retention_period    = var.backup_retention_period
+  backup_window              = var.backup_window
+  maintenance_window         = var.maintenance_window
+  copy_tags_to_snapshot      = true
+  auto_minor_version_upgrade = true
 
   # Encryption
   storage_encrypted = var.enable_encryption
@@ -58,6 +60,7 @@ resource "aws_db_instance" "main" {
   # Performance Insights
   performance_insights_enabled          = true
   performance_insights_retention_period = 7
+  performance_insights_kms_key_id       = aws_kms_key.rds.arn
 
   tags = {
     Name = "${var.project_name}-${var.environment}-rds-instance"
@@ -87,6 +90,11 @@ resource "aws_db_parameter_group" "main" {
     value = "1000"
   }
 
+  parameter {
+    name  = "rds.force_ssl"
+    value = "1"
+  }
+
   tags = {
     Name = "${var.project_name}-${var.environment}-db-param-group"
   }
@@ -101,6 +109,18 @@ resource "aws_kms_key" "rds" {
   description             = "KMS key for RDS encryption"
   deletion_window_in_days = 7
   enable_key_rotation     = true
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "EnableAccountAdministration"
+      Effect = "Allow"
+      Principal = {
+        AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+      }
+      Action   = "kms:*"
+      Resource = "*"
+    }]
+  })
 
   tags = {
     Name = "${var.project_name}-${var.environment}-rds-key"

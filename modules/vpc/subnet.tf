@@ -12,7 +12,7 @@ resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.this.id
   cidr_block              = cidrsubnet("10.0.0.0/16", 8, count.index)
   availability_zone       = local.azs[count.index]
-  map_public_ip_on_launch = true
+  map_public_ip_on_launch = false
 
   tags = {
     Name = "${var.project_name}-${var.environment}-public-${count.index}"
@@ -21,10 +21,11 @@ resource "aws_subnet" "public" {
 
 # Private Application Tier Subnets (ECS, EC2)
 resource "aws_subnet" "private_app" {
-  count             = 2
-  vpc_id            = aws_vpc.this.id
-  cidr_block        = cidrsubnet("10.0.0.0/16", 8, count.index + 10)
-  availability_zone = local.azs[count.index]
+  count                   = 2
+  vpc_id                  = aws_vpc.this.id
+  cidr_block              = cidrsubnet("10.0.0.0/16", 8, count.index + 10)
+  availability_zone       = local.azs[count.index]
+  map_public_ip_on_launch = false
 
   tags = {
     Name = "${var.project_name}-${var.environment}-private-app-${count.index + 1}"
@@ -34,10 +35,11 @@ resource "aws_subnet" "private_app" {
 
 # Private Data Tier Subnets (RDS, Databases)
 resource "aws_subnet" "private_data" {
-  count             = 2
-  vpc_id            = aws_vpc.this.id
-  cidr_block        = cidrsubnet("10.0.0.0/16", 8, count.index + 20)
-  availability_zone = local.azs[count.index]
+  count                   = 2
+  vpc_id                  = aws_vpc.this.id
+  cidr_block              = cidrsubnet("10.0.0.0/16", 8, count.index + 20)
+  availability_zone       = local.azs[count.index]
+  map_public_ip_on_launch = false
 
   tags = {
     Name = "${var.project_name}-${var.environment}-private-data-${count.index + 1}"

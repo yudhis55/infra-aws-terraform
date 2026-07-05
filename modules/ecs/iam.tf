@@ -73,7 +73,7 @@ resource "aws_iam_role_policy" "ecs_task_execution_secrets" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
+    Statement = concat([
       {
         Effect = "Allow"
         Action = [
@@ -85,7 +85,13 @@ resource "aws_iam_role_policy" "ecs_task_execution_secrets" {
           aws_secretsmanager_secret.app.arn
         ]
       }
-    ]
+      ],
+      var.app_secrets_kms_key_id != "" ? [{
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = var.app_secrets_kms_key_id
+      }] : []
+    )
   })
 }
 
@@ -118,17 +124,25 @@ resource "aws_iam_role_policy" "ecs_task_secrets_policy" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "secretsmanager:GetSecretValue",
-        "secretsmanager:DescribeSecret"
-      ]
-      Resource = [
-        var.rds_secrets_arn,
-        aws_secretsmanager_secret.app.arn
-      ]
-    }]
+    Statement = concat([
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret"
+        ]
+        Resource = [
+          var.rds_secrets_arn,
+          aws_secretsmanager_secret.app.arn
+        ]
+      }
+      ],
+      var.app_secrets_kms_key_id != "" ? [{
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = var.app_secrets_kms_key_id
+      }] : []
+    )
   })
 }
 

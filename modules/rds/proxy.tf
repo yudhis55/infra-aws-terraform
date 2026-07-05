@@ -126,6 +126,11 @@ resource "aws_iam_role_policy" "proxy_policy" {
         Resource = [
           var.secrets_manager_secret_arn != "" ? var.secrets_manager_secret_arn : aws_secretsmanager_secret.db_credentials[0].arn
         ]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = aws_kms_key.rds.arn
       }
     ]
   })
@@ -137,6 +142,7 @@ resource "aws_secretsmanager_secret" "db_credentials" {
   name                    = "${var.project_name}/${var.environment}/rds/credentials"
   description             = "RDS database credentials for ${var.project_name}"
   recovery_window_in_days = 7
+  kms_key_id              = aws_kms_key.rds.arn
 
   tags = {
     Name = "${var.project_name}-${var.environment}-rds-secret"

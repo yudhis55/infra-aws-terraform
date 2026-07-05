@@ -2,7 +2,8 @@
 # Untuk mengirim alarm notifications via email atau SMS
 
 resource "aws_sns_topic" "alerts" {
-  name_prefix = "${var.project_name}-alerts-"
+  name_prefix       = "${var.project_name}-alerts-"
+  kms_master_key_id = "alias/aws/sns"
 
   tags = {
     Name = "${var.project_name}-alerts"
@@ -318,7 +319,7 @@ resource "aws_cloudwatch_metric_alarm" "asg_insufficient_capacity" {
 
 resource "aws_cloudwatch_log_group" "error_metric_filter" {
   name              = "/aws/lambda/${var.project_name}-error-tracker"
-  retention_in_days = 7
+  retention_in_days = var.log_retention_days
 
   tags = {
     Name = "${var.project_name}-error-tracking"

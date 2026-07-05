@@ -3,6 +3,10 @@ locals {
   use_custom_certificate = length(var.aliases) > 0
 }
 
+data "aws_cloudfront_response_headers_policy" "security_headers" {
+  name = "Managed-SecurityHeadersPolicy"
+}
+
 resource "aws_cloudfront_origin_access_control" "uploads" {
   name                              = "${var.project_name}-${var.environment}-uploads-oac"
   description                       = "Allow CloudFront to read private upload objects"
@@ -25,11 +29,12 @@ resource "aws_cloudfront_distribution" "uploads" {
   }
 
   default_cache_behavior {
-    target_origin_id       = local.origin_id
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
-    compress               = true
+    target_origin_id           = local.origin_id
+    viewer_protocol_policy     = "redirect-to-https"
+    allowed_methods            = ["GET", "HEAD", "OPTIONS"]
+    cached_methods             = ["GET", "HEAD"]
+    compress                   = true
+    response_headers_policy_id = data.aws_cloudfront_response_headers_policy.security_headers.id
 
     forwarded_values {
       query_string = false

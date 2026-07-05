@@ -154,7 +154,7 @@ resource "aws_wafv2_web_acl_association" "alb" {
 resource "aws_cloudwatch_log_group" "waf" {
   count             = var.enable_waf ? 1 : 0
   name              = "aws-waf-logs-${var.project_name}"
-  retention_in_days = 7
+  retention_in_days = 365
 
   tags = {
     Name = "${var.project_name}-waf-logs"

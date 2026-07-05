@@ -8,4 +8,12 @@ resource "aws_vpc" "this" {
   }
 }
 
+resource "aws_default_security_group" "this" {
+  vpc_id = aws_vpc.this.id
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-default-sg-locked"
+  }
+}
+
 data "aws_region" "current" {}

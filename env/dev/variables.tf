@@ -302,7 +302,7 @@ variable "enable_detailed_monitoring" {
 variable "log_retention_days" {
   description = "CloudWatch log retention period in days"
   type        = number
-  default     = 7
+  default     = 365
 
   validation {
     condition     = var.log_retention_days >= 1 && var.log_retention_days <= 3653

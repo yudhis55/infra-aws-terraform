@@ -57,3 +57,26 @@ resource "aws_s3_bucket_policy" "alb_logs" {
 
   depends_on = [aws_s3_bucket_public_access_block.alb_logs]
 }
+
+resource "aws_s3_bucket_lifecycle_configuration" "alb_logs" {
+  bucket = aws_s3_bucket.alb_logs.id
+
+  rule {
+    id     = "retain-alb-log-evidence"
+    status = "Enabled"
+
+    filter {}
+
+    expiration {
+      days = 365
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+}
