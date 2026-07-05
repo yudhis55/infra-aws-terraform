@@ -15,6 +15,7 @@ locals {
   zone_id               = var.create_hosted_zone ? aws_route53_zone.main[0].zone_id : var.hosted_zone_id
   records_enabled       = var.domain_name != "" && local.zone_id != ""
   health_checks_enabled = local.records_enabled && var.enable_health_checks
+  cdn_record_enabled    = local.records_enabled && var.enable_cdn_cname
 }
 
 # ==================== Route53 Health Check untuk ALB ====================
@@ -135,7 +136,7 @@ resource "aws_route53_record" "txt_verification" {
 # CNAME record untuk CloudFront distribution jika ada
 
 resource "aws_route53_record" "cdn" {
-  count   = local.records_enabled && var.enable_cdn_cname && var.cloudfront_domain_name != "" ? 1 : 0
+  count   = local.cdn_record_enabled ? 1 : 0
   zone_id = local.zone_id
   name    = var.cdn_subdomain
   type    = "CNAME"
