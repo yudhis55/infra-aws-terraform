@@ -30,15 +30,27 @@ variable "private_app_subnets" {
 }
 
 variable "alb_security_group_id" {
-  description = "Existing ALB security group ID. If null, this module creates one."
+  description = "Existing ALB security group ID. Required when create_alb_security_group is false."
   type        = string
   default     = null
 }
 
+variable "create_alb_security_group" {
+  description = "Whether this module creates the ALB security group. Set false when the networking module owns it."
+  type        = bool
+  default     = true
+}
+
 variable "ecs_security_group_id" {
-  description = "Existing ECS security group ID. If null, this module creates one."
+  description = "Existing ECS security group ID. Required when create_ecs_security_group is false."
   type        = string
   default     = null
+}
+
+variable "create_ecs_security_group" {
+  description = "Whether this module creates the ECS security group. Set false when the networking module owns it."
+  type        = bool
+  default     = true
 }
 
 variable "ecr_image" {

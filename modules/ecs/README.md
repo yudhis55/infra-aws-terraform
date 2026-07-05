@@ -15,6 +15,16 @@ ALB access logs.
 - CloudWatch log group
 - S3 bucket untuk ALB access logs
 
+## Input Keamanan Jaringan
+
+Default modul ECS masih bisa membuat security group ALB/ECS sendiri untuk
+penggunaan mandiri. Pada environment utama project ini, security group dimiliki
+oleh modul `networking`, sehingga caller wajib mengirim
+`create_alb_security_group=false` dan `create_ecs_security_group=false` bersama
+ID security group dari modul networking. Keputusan eksplisit ini membuat plan
+Terraform stabil karena jumlah resource tidak bergantung pada ID resource yang
+baru diketahui saat apply.
+
 ## Catatan Operasional
 
 Task definition memakai `bridge` network mode dengan dynamic host port mapping.
@@ -23,4 +33,3 @@ bukan Auto Scaling Group.
 
 Untuk production, `enable_https=true` wajib disertai `acm_certificate_arn` yang
 sudah valid. Self-signed certificate tidak dipakai.
-

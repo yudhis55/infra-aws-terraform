@@ -111,6 +111,9 @@ module "ecs" {
   alb_security_group_id = module.networking.alb_security_group_id
   ecs_security_group_id = module.networking.ecs_security_group_id
 
+  create_alb_security_group = false
+  create_ecs_security_group = false
+
   # Container image
   ecr_image = var.app_image_uri
 

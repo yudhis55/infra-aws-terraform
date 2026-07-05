@@ -7,8 +7,8 @@ resource "aws_ecs_cluster" "main" {
 }
 
 locals {
-  create_alb_security_group = var.alb_security_group_id == null || var.alb_security_group_id == ""
-  create_ecs_security_group = var.ecs_security_group_id == null || var.ecs_security_group_id == ""
+  create_alb_security_group = var.create_alb_security_group
+  create_ecs_security_group = var.create_ecs_security_group
 
   alb_security_group_id = local.create_alb_security_group ? aws_security_group.alb_sg[0].id : var.alb_security_group_id
   ecs_security_group_id = local.create_ecs_security_group ? aws_security_group.ecs_sg[0].id : var.ecs_security_group_id
