@@ -111,6 +111,7 @@ resource "aws_secretsmanager_secret" "app" {
   name_prefix             = "${var.project_name}/${var.environment}/app/"
   description             = "Runtime secrets for ${var.project_name} application"
   recovery_window_in_days = 7
+  kms_key_id              = var.app_secrets_kms_key_id != "" ? var.app_secrets_kms_key_id : null
 
   tags = {
     Name        = "${var.project_name}-${var.environment}-app-secrets"

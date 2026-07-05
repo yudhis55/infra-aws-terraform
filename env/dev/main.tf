@@ -134,18 +134,19 @@ module "ecs" {
   rds_secrets_arn = var.secrets_manager_secret_arn != "" ? var.secrets_manager_secret_arn : module.rds.rds_secrets_manager_secret_arn
 
   # Application runtime configuration
-  app_base_url       = var.app_base_url
-  auth_secret        = var.auth_secret
-  s3_bucket_name     = module.storage.bucket_id
-  s3_bucket_arn      = module.storage.bucket_arn
-  s3_region          = var.aws_region
-  s3_public_base_url = module.cdn.public_base_url
-  smtp_host          = var.smtp_host
-  smtp_port          = var.smtp_port
-  smtp_user          = var.smtp_user
-  smtp_pass          = var.smtp_pass
-  smtp_from          = var.smtp_from
-  health_check_path  = var.health_check_path
+  app_base_url           = var.app_base_url
+  auth_secret            = var.auth_secret
+  app_secrets_kms_key_id = module.rds.rds_kms_key_arn
+  s3_bucket_name         = module.storage.bucket_id
+  s3_bucket_arn          = module.storage.bucket_arn
+  s3_region              = var.aws_region
+  s3_public_base_url     = module.cdn.public_base_url
+  smtp_host              = var.smtp_host
+  smtp_port              = var.smtp_port
+  smtp_user              = var.smtp_user
+  smtp_pass              = var.smtp_pass
+  smtp_from              = var.smtp_from
+  health_check_path      = var.health_check_path
 
   # HTTPS configuration
   enable_https        = var.enable_https

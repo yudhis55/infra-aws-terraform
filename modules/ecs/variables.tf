@@ -133,6 +133,12 @@ variable "auth_secret" {
   sensitive   = true
 }
 
+variable "app_secrets_kms_key_id" {
+  description = "KMS key ARN or ID used to encrypt application runtime secrets."
+  type        = string
+  default     = ""
+}
+
 variable "s3_bucket_name" {
   description = "Application upload S3 bucket name"
   type        = string
