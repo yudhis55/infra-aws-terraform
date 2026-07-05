@@ -40,6 +40,11 @@ resource "aws_launch_template" "ecs" {
     enabled = true
   }
 
+  metadata_options {
+    http_endpoint = "enabled"
+    http_tokens   = "required"
+  }
+
   tag_specifications {
     resource_type = "instance"
     tags = {

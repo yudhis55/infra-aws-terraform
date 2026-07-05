@@ -186,6 +186,7 @@ resource "aws_lb" "main" {
   security_groups    = [local.alb_security_group_id]
 
   enable_deletion_protection = true
+  drop_invalid_header_fields = true
 
   access_logs {
     bucket  = aws_s3_bucket.alb_logs.bucket
