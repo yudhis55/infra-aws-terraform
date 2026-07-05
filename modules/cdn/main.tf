@@ -1,6 +1,6 @@
 locals {
   origin_id              = "${var.project_name}-${var.environment}-uploads-origin"
-  use_custom_certificate = var.viewer_certificate_acm_arn != "" && length(var.aliases) > 0
+  use_custom_certificate = length(var.aliases) > 0
 }
 
 resource "aws_cloudfront_origin_access_control" "uploads" {
@@ -47,10 +47,17 @@ resource "aws_cloudfront_distribution" "uploads" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = local.use_custom_certificate ? null : true
+    cloudfront_default_certificate = local.use_custom_certificate ? false : true
     acm_certificate_arn            = local.use_custom_certificate ? var.viewer_certificate_acm_arn : null
     ssl_support_method             = local.use_custom_certificate ? "sni-only" : null
     minimum_protocol_version       = local.use_custom_certificate ? "TLSv1.2_2021" : null
+  }
+
+  lifecycle {
+    precondition {
+      condition     = !local.use_custom_certificate || var.viewer_certificate_acm_arn != ""
+      error_message = "CloudFront aliases require a us-east-1 ACM certificate ARN."
+    }
   }
 
   tags = {
