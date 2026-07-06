@@ -44,9 +44,9 @@ variable "enable_health_checks" {
 }
 
 variable "enable_www_subdomain" {
-  description = "Create www.domain.com subdomain"
+  description = "Create www.domain.com subdomain. Keep disabled unless the certificate covers www and no conflicting CNAME already exists."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "create_api_subdomain" {
@@ -104,9 +104,9 @@ variable "cloudfront_domain_name" {
 }
 
 variable "enable_query_logging" {
-  description = "Enable Route53 query logging to CloudWatch"
+  description = "Enable Route53 public hosted zone query logging. This requires a CloudWatch Logs destination in us-east-1 and is disabled by default until that regional wiring is implemented."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "log_retention_days" {

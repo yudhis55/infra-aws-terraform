@@ -41,10 +41,11 @@ resource "aws_route53_health_check" "alb" {
 # Alias record pointing to ALB dengan health check
 
 resource "aws_route53_record" "alb_alias" {
-  count   = local.records_enabled ? 1 : 0
-  zone_id = local.zone_id
-  name    = var.domain_name
-  type    = "A"
+  count           = local.records_enabled ? 1 : 0
+  zone_id         = local.zone_id
+  name            = var.domain_name
+  type            = "A"
+  allow_overwrite = true
 
   alias {
     name                   = var.alb_dns_name
@@ -57,10 +58,11 @@ resource "aws_route53_record" "alb_alias" {
 # www subdomain redirects to primary domain
 
 resource "aws_route53_record" "www" {
-  count   = local.records_enabled && var.enable_www_subdomain ? 1 : 0
-  zone_id = local.zone_id
-  name    = "www.${var.domain_name}"
-  type    = "A"
+  count           = local.records_enabled && var.enable_www_subdomain ? 1 : 0
+  zone_id         = local.zone_id
+  name            = "www.${var.domain_name}"
+  type            = "A"
+  allow_overwrite = true
 
   alias {
     name                   = var.alb_dns_name
@@ -74,10 +76,11 @@ resource "aws_route53_record" "www" {
 # API subdomain for backend service
 
 resource "aws_route53_record" "api" {
-  count   = local.records_enabled && var.create_api_subdomain ? 1 : 0
-  zone_id = local.zone_id
-  name    = "api.${var.domain_name}"
-  type    = "A"
+  count           = local.records_enabled && var.create_api_subdomain ? 1 : 0
+  zone_id         = local.zone_id
+  name            = "api.${var.domain_name}"
+  type            = "A"
+  allow_overwrite = true
 
   alias {
     name                   = var.alb_dns_name
@@ -91,10 +94,11 @@ resource "aws_route53_record" "api" {
 # Admin subdomain untuk admin panel
 
 resource "aws_route53_record" "admin" {
-  count   = local.records_enabled && var.create_admin_subdomain ? 1 : 0
-  zone_id = local.zone_id
-  name    = "admin.${var.domain_name}"
-  type    = "A"
+  count           = local.records_enabled && var.create_admin_subdomain ? 1 : 0
+  zone_id         = local.zone_id
+  name            = "admin.${var.domain_name}"
+  type            = "A"
+  allow_overwrite = true
 
   alias {
     name                   = var.alb_dns_name
@@ -108,11 +112,12 @@ resource "aws_route53_record" "admin" {
 # MX record untuk email delivery (optional, untuk custom mail server)
 
 resource "aws_route53_record" "mx" {
-  count   = local.records_enabled && var.enable_mx_record ? 1 : 0
-  zone_id = local.zone_id
-  name    = var.domain_name
-  type    = "MX"
-  ttl     = 300
+  count           = local.records_enabled && var.enable_mx_record ? 1 : 0
+  zone_id         = local.zone_id
+  name            = var.domain_name
+  type            = "MX"
+  ttl             = 300
+  allow_overwrite = true
 
   records = var.mx_records
 
@@ -122,11 +127,12 @@ resource "aws_route53_record" "mx" {
 # TXT record untuk domain verification (SPF, DKIM, DMARC, site verification)
 
 resource "aws_route53_record" "txt_verification" {
-  count   = local.records_enabled && var.enable_txt_verification_record ? 1 : 0
-  zone_id = local.zone_id
-  name    = var.domain_name
-  type    = "TXT"
-  ttl     = 300
+  count           = local.records_enabled && var.enable_txt_verification_record ? 1 : 0
+  zone_id         = local.zone_id
+  name            = var.domain_name
+  type            = "TXT"
+  ttl             = 300
+  allow_overwrite = true
 
   records = var.txt_verification_records
 
@@ -136,11 +142,12 @@ resource "aws_route53_record" "txt_verification" {
 # CNAME record untuk CloudFront distribution jika ada
 
 resource "aws_route53_record" "cdn" {
-  count   = local.cdn_record_enabled ? 1 : 0
-  zone_id = local.zone_id
-  name    = var.cdn_subdomain
-  type    = "CNAME"
-  ttl     = 300
+  count           = local.cdn_record_enabled ? 1 : 0
+  zone_id         = local.zone_id
+  name            = var.cdn_subdomain
+  type            = "CNAME"
+  ttl             = 300
+  allow_overwrite = true
 
   records = [var.cloudfront_domain_name]
 

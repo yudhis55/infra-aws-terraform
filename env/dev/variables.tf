@@ -338,7 +338,7 @@ variable "enable_health_checks" {
 variable "enable_www_subdomain" {
   description = "Create www.domain.com subdomain"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "create_api_subdomain" {
@@ -396,7 +396,7 @@ variable "cloudfront_domain_name" {
 }
 
 variable "enable_query_logging" {
-  description = "Enable Route53 query logging to CloudWatch"
+  description = "Enable Route53 public hosted zone query logging. Disabled by default because Route53 query logs require us-east-1 CloudWatch Logs wiring."
   type        = bool
-  default     = true
+  default     = false
 }

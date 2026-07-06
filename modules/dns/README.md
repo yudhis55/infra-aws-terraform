@@ -6,9 +6,9 @@ Phase 6 provides complete DNS management infrastructure using AWS Route53 with t
 
 - **Hosted Zone Management**: Create and manage Route53 hosted zones
 - **A Records**: Alias records pointing to ALB with optional health checks
-- **Subdomains**: Support for www, api, admin, and custom subdomains
+- **Subdomains**: Optional support for www, api, admin, and custom subdomains
 - **Health Checks**: Automated health monitoring of ALB endpoint
-- **Query Logging**: DNS query logging to CloudWatch for audit/troubleshooting
+- **Query Logging**: Optional DNS query logging to CloudWatch for audit/troubleshooting
 - **Email**: MX and TXT records for mail and domain verification
 - **CDN**: CNAME records for CloudFront distributions
 
@@ -64,12 +64,12 @@ example.com  A  <ALB-DNS-NAME>  (with health check)
 ### 2. WWW Subdomain
 
 ```hcl
-# Controlled by: enable_www_subdomain = true (default)
+# Controlled by: enable_www_subdomain = true
 www.example.com  A  <ALB-DNS-NAME>
 ```
 
 **Use Case**: Standard web address
-**Enable**: Set `enable_www_subdomain = true`
+**Enable**: Set `enable_www_subdomain = true` only after the ACM certificate covers `www.example.com` and no conflicting manual CNAME exists.
 
 ### 3. API Subdomain
 
@@ -174,7 +174,11 @@ Automatically creates alarm `{project_name}-route53-health-check-status`:
 
 ## Query Logging
 
-When `enable_query_logging = true` (default):
+When `enable_query_logging = true`:
+
+> Route53 public hosted zone query logging sends logs to CloudWatch Logs in
+> `us-east-1`. Keep it disabled until the module is wired with a us-east-1 log
+> destination and resource policy.
 
 - **Destination**: CloudWatch Log Group `/aws/route53/{domain_name}`
 - **Retention**: 7 days (configurable)
@@ -224,7 +228,7 @@ create_hosted_zone = true
 alb_zone_id        = "Z1LMS91P8CMLE5"  # Check table above for your region
 
 # Enable records you need
-enable_www_subdomain         = true
+enable_www_subdomain         = false
 create_api_subdomain         = false
 create_admin_subdomain       = false
 enable_mx_record             = false
@@ -338,7 +342,7 @@ enable_www_subdomain           = true
 create_api_subdomain           = true
 create_admin_subdomain         = true
 enable_health_checks           = true
-enable_query_logging           = true
+enable_query_logging           = false
 ```
 
 **Result**:
@@ -348,7 +352,7 @@ enable_query_logging           = true
 - api.example.com → ALB
 - admin.example.com → ALB
 - Health checks monitoring
-- Query logs in CloudWatch
+- Query logs in CloudWatch only if us-east-1 query logging support is enabled
 
 ### Scenario 2: Domain with CloudFront CDN
 
@@ -442,7 +446,7 @@ alb_zone_id        = "Z1LMS91P8CMLE5"
 
 **Savings Tips**:
 
-- Disable query logging if not needed
+- Keep query logging disabled unless you need DNS audit evidence and have wired the us-east-1 log destination
 - Use simple health checks (reduce interval if possible)
 - Consolidate zones if managing multiple domains
 

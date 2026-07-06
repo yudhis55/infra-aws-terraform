@@ -77,8 +77,10 @@ implemented evidence in BAB 4.
   protected by ALB WAF and ALB logs. CDN WAF/logging must not be claimed in
   BAB 4 unless implemented and verified later.
 - Route53 DNSSEC and query logging findings: DNS query logging is optional and
-  DNSSEC is deferred because the thesis focuses on workload deployment and
-  DevSecOps pipeline evidence, not DNSSEC operations.
+  disabled by default for this baseline because public hosted zone query logging
+  requires CloudWatch Logs wiring in `us-east-1`; DNSSEC is deferred because the
+  thesis focuses on workload deployment and DevSecOps pipeline evidence, not
+  DNSSEC operations.
 - S3 cross-region replication: deferred. The target architecture is
   single-region production-like, not multi-region disaster recovery.
 - S3 access logging and customer-managed KMS for every bucket: deferred. Buckets
