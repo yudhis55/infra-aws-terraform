@@ -85,6 +85,10 @@ resource "aws_autoscaling_group" "ecs" {
 
   lifecycle {
     create_before_destroy = true
+    ignore_changes = [
+      # ECS capacity provider managed scaling adjusts desired capacity at runtime.
+      desired_capacity
+    ]
   }
 
   tag {
@@ -96,6 +100,12 @@ resource "aws_autoscaling_group" "ecs" {
   tag {
     key                 = "Environment"
     value               = var.environment
+    propagate_at_launch = true
+  }
+
+  tag {
+    key                 = "AmazonECSManaged"
+    value               = "true"
     propagate_at_launch = true
   }
 
