@@ -43,25 +43,62 @@ resource "aws_vpc_endpoint" "s3" {
   }
 }
 
+locals {
+  s3_endpoint_all_buckets        = contains(var.s3_endpoint_allowed_bucket_arns, "*")
+  ecr_starport_layer_bucket_arn  = "arn:aws:s3:::prod-${var.aws_region}-starport-layer-bucket"
+  app_bucket_object_resource_arn = [for arn in var.s3_endpoint_allowed_bucket_arns : "${arn}/*"]
+}
+
 # S3 Endpoint Policy - Allow private subnets access to S3
 resource "aws_vpc_endpoint_policy" "s3" {
   vpc_endpoint_id = aws_vpc_endpoint.s3.id
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
+    Statement = local.s3_endpoint_all_buckets ? [
       {
+        Sid       = "AllowAllS3WhenExplicitlyRequested"
         Effect    = "Allow"
         Principal = "*"
         Action = [
           "s3:GetObject",
           "s3:PutObject",
-          "s3:ListBucket"
+          "s3:DeleteObject",
+          "s3:ListBucket",
+          "s3:GetBucketLocation"
         ]
-        Resource = contains(var.s3_endpoint_allowed_bucket_arns, "*") ? ["*"] : concat(
-          var.s3_endpoint_allowed_bucket_arns,
-          [for arn in var.s3_endpoint_allowed_bucket_arns : "${arn}/*"]
-        )
+        Resource = ["*"]
+      }
+      ] : [
+      {
+        Sid       = "AllowApplicationBucketMetadata"
+        Effect    = "Allow"
+        Principal = "*"
+        Action = [
+          "s3:ListBucket",
+          "s3:GetBucketLocation"
+        ]
+        Resource = var.s3_endpoint_allowed_bucket_arns
+      },
+      {
+        Sid       = "AllowApplicationObjectAccess"
+        Effect    = "Allow"
+        Principal = "*"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:AbortMultipartUpload",
+          "s3:ListMultipartUploadParts"
+        ]
+        Resource = local.app_bucket_object_resource_arn
+      },
+      {
+        Sid       = "AllowEcrImageLayerPulls"
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = ["s3:GetObject"]
+        Resource  = ["${local.ecr_starport_layer_bucket_arn}/*"]
       }
     ]
   })

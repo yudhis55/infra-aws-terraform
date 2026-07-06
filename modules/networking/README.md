@@ -22,3 +22,6 @@ RDS Proxy. Direct ECS -> RDS hanya boleh diaktifkan dengan
 S3 Gateway Endpoint dibatasi ke bucket yang diteruskan melalui
 `s3_endpoint_allowed_bucket_arns`. Untuk environment utama, isi variable ini
 dengan bucket upload aplikasi agar endpoint policy tidak wildcard ke seluruh S3.
+Policy juga mengizinkan `s3:GetObject` ke bucket internal ECR
+`prod-<region>-starport-layer-bucket/*`. Jalur ini diperlukan agar ECS EC2 di
+private subnet bisa menarik image layer dari ECR melalui S3 gateway endpoint.
