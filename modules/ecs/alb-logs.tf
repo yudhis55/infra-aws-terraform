@@ -2,6 +2,7 @@ data "aws_elb_service_account" "main" {}
 
 resource "aws_s3_bucket" "alb_logs" {
   bucket_prefix = "${var.project_name}-${var.environment}-alb-logs-"
+  force_destroy = var.alb_logs_force_destroy
 
   tags = {
     Name        = "${var.project_name}-${var.environment}-alb-logs"

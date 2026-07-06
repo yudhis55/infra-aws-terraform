@@ -254,6 +254,18 @@ variable "cloudfront_price_class" {
   default     = "PriceClass_100"
 }
 
+variable "force_destroy" {
+  description = "Allow controlled teardown to delete non-empty S3 buckets. Keep false for normal production-like runs."
+  type        = bool
+  default     = false
+}
+
+variable "ecr_force_delete" {
+  description = "Allow controlled teardown to delete the ECR repository even when it contains images."
+  type        = bool
+  default     = false
+}
+
 # ==================== HTTPS & TLS CONFIGURATION ====================
 variable "enable_https" {
   description = "Enable HTTPS listener on ALB. Requires acm_certificate_arn."

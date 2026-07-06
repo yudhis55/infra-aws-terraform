@@ -24,6 +24,7 @@ module "networking" {
 module "ecr" {
   source       = "../../modules/ecr"
   project_name = var.project_name
+  force_delete = var.ecr_force_delete
 }
 
 locals {
@@ -43,6 +44,7 @@ module "storage" {
   project_name         = var.project_name
   environment          = var.environment
   cors_allowed_origins = local.effective_s3_cors_allowed_origins
+  force_destroy        = var.force_destroy
 }
 
 module "cloudfront_certificate" {
@@ -178,6 +180,7 @@ module "ecs" {
   smtp_pass              = var.smtp_pass
   smtp_from              = var.smtp_from
   health_check_path      = var.health_check_path
+  alb_logs_force_destroy = var.force_destroy
 
   # HTTPS configuration
   enable_https               = var.enable_https

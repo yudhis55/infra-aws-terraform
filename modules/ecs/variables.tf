@@ -197,6 +197,12 @@ variable "health_check_path" {
   default     = "/api/health"
 }
 
+variable "alb_logs_force_destroy" {
+  description = "Allow Terraform to delete ALB access log bucket contents during controlled teardown."
+  type        = bool
+  default     = false
+}
+
 variable "enable_https" {
   description = "Enable HTTPS listener on ALB"
   type        = bool
