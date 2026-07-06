@@ -80,7 +80,7 @@ resource "aws_autoscaling_group" "ecs" {
 
   launch_template {
     id      = aws_launch_template.ecs.id
-    version = "$Latest"
+    version = aws_launch_template.ecs.latest_version
   }
 
   lifecycle {
