@@ -25,6 +25,30 @@ capture() {
   fi
 }
 
+verify_json_endpoint() {
+  local name="$1"
+  local url="$2"
+  local status
+
+  if ! status="$(curl --silent --show-error --max-time 30 --output "$OUT_DIR/${name}.json" --write-out "%{http_code}" "$url" 2> "$OUT_DIR/${name}.err")"; then
+    log_status "FAIL runtime-${name}: curl failed"
+    return 1
+  fi
+
+  if [ "$status" != "200" ]; then
+    echo "Expected HTTP 200, got $status" > "$OUT_DIR/${name}.err"
+    log_status "FAIL runtime-${name}: HTTP $status"
+    return 1
+  fi
+
+  if jq -e '.status == "ok"' "$OUT_DIR/${name}.json" > /dev/null 2> "$OUT_DIR/${name}.err"; then
+    log_status "PASS runtime-${name}"
+  else
+    log_status "FAIL runtime-${name}: response is not JSON status=ok"
+    return 1
+  fi
+}
+
 read_output() {
   local key="$1"
   jq -r --arg key "$key" '.[$key].value // empty' "$OUT_DIR/terraform-output.json"
@@ -172,13 +196,8 @@ if [ -n "$alb_dns_name" ]; then
 fi
 
 if [ -n "$application_url" ]; then
-  curl --fail --silent --show-error --max-time 30 "$application_url/api/health" > "$OUT_DIR/health.json" \
-    && log_status "PASS runtime-health" \
-    || log_status "FAIL runtime-health"
-
-  curl --fail --silent --show-error --max-time 30 "$application_url/api/readiness" > "$OUT_DIR/readiness.json" \
-    && log_status "PASS runtime-readiness" \
-    || log_status "FAIL runtime-readiness"
+  verify_json_endpoint "health" "$application_url/api/health"
+  verify_json_endpoint "readiness" "$application_url/api/readiness"
 fi
 
 if [ "$failures" -gt 0 ]; then
