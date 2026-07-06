@@ -15,6 +15,7 @@ on:
         options:
           - plan
           - apply
+          - destroy
 
 permissions:
   contents: read
@@ -105,7 +106,7 @@ jobs:
     needs: [validate-and-scan]
     if: >-
       github.event_name == 'workflow_dispatch' &&
-      (inputs.action == 'plan' || inputs.action == 'apply') &&
+      (inputs.action == 'plan' || inputs.action == 'apply' || inputs.action == 'destroy') &&
       vars.AWS_REGION != '' &&
       vars.TF_VAR_PROJECT_NAME != '' &&
       vars.TF_VAR_APP_IMAGE_URI != ''
@@ -137,9 +138,20 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform init
 
+      - name: Configure destroy cost-saving overrides
+        if: inputs.action == 'destroy'
+        run: |
+          echo "TF_VAR_enable_deletion_protection=false" >> "$GITHUB_ENV"
+          echo "TF_VAR_skip_final_snapshot=true" >> "$GITHUB_ENV"
+
       - name: Terraform plan
         working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform plan -out=tfplan
+        run: |
+          if [ "${{ inputs.action }}" = "destroy" ]; then
+            terraform plan -destroy -out=tfplan
+          else
+            terraform plan -out=tfplan
+          fi
 
       - name: Export human-readable plan
         working-directory: ${{ env.TF_WORKING_DIR }}
@@ -159,7 +171,7 @@ jobs:
     needs: [plan]
     if: >-
       github.event_name == 'workflow_dispatch' &&
-      inputs.action == 'apply' &&
+      (inputs.action == 'apply' || inputs.action == 'destroy') &&
       vars.AWS_REGION != '' &&
       vars.TF_VAR_PROJECT_NAME != '' &&
       vars.TF_VAR_APP_IMAGE_URI != ''
@@ -192,6 +204,12 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform init
 
+      - name: Configure destroy cost-saving overrides
+        if: inputs.action == 'destroy'
+        run: |
+          echo "TF_VAR_enable_deletion_protection=false" >> "$GITHUB_ENV"
+          echo "TF_VAR_skip_final_snapshot=true" >> "$GITHUB_ENV"
+
       - name: Download reviewed plan artifact
         uses: actions/download-artifact@v4
         with:
@@ -203,7 +221,23 @@ jobs:
         run: terraform apply -auto-approve tfplan
 
       - name: Post-apply AWS verification
+        if: inputs.action == 'apply'
         run: bash scripts/verify-aws-post-apply.sh "${{ env.TF_WORKING_DIR }}" verification-evidence
+
+      - name: Post-destroy Terraform state verification
+        if: inputs.action == 'destroy'
+        run: |
+          set -euo pipefail
+          mkdir -p destroy-evidence
+          terraform -chdir="${{ env.TF_WORKING_DIR }}" state list > destroy-evidence/state-list.txt
+
+          if [ -s destroy-evidence/state-list.txt ]; then
+            echo "Terraform state still contains resources after destroy:" >&2
+            cat destroy-evidence/state-list.txt >&2
+            exit 1
+          fi
+
+          echo "PASS terraform-state-empty" > destroy-evidence/verification-status.txt
 
       - name: Upload post-apply evidence
         if: always()
@@ -211,4 +245,12 @@ jobs:
         with:
           name: post-apply-verification
           path: verification-evidence
+          if-no-files-found: ignore
+
+      - name: Upload post-destroy evidence
+        if: always() && inputs.action == 'destroy'
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-destroy-verification
+          path: destroy-evidence
           if-no-files-found: ignore
