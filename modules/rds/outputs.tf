@@ -1,6 +1,6 @@
 # RDS Instance Outputs
 output "rds_instance_id" {
-  value       = aws_db_instance.main.id
+  value       = aws_db_instance.main.identifier
   description = "RDS instance identifier"
 }
 

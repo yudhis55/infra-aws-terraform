@@ -91,6 +91,15 @@ resource "aws_autoscaling_group" "ecs" {
     ]
   }
 
+  instance_refresh {
+    strategy = "Rolling"
+
+    preferences {
+      instance_warmup        = 300
+      min_healthy_percentage = 50
+    }
+  }
+
   tag {
     key                 = "Name"
     value               = "${var.project_name}-asg-instance"

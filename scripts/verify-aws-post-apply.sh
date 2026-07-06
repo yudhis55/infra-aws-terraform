@@ -5,9 +5,13 @@ TF_DIR="${1:-env/dev}"
 OUT_DIR="$(pwd)/${2:-verification-evidence}"
 
 mkdir -p "$OUT_DIR"
+failures=0
 
 log_status() {
   echo "$1" >> "$OUT_DIR/verification-status.txt"
+  if [[ "$1" == FAIL* ]]; then
+    failures=$((failures + 1))
+  fi
 }
 
 capture() {
@@ -24,6 +28,25 @@ capture() {
 read_output() {
   local key="$1"
   jq -r --arg key "$key" '.[$key].value // empty' "$OUT_DIR/terraform-output.json"
+}
+
+wait_for_ecs_capacity() {
+  local cluster_name="$1"
+  local attempts="${2:-40}"
+  local delay_seconds="${3:-15}"
+  local count
+
+  for _ in $(seq 1 "$attempts"); do
+    count="$(aws ecs list-container-instances --cluster "$cluster_name" | jq '.containerInstanceArns | length')" || count=0
+    if [ "$count" -gt 0 ]; then
+      log_status "PASS ecs-container-instances: $count registered"
+      return 0
+    fi
+    sleep "$delay_seconds"
+  done
+
+  log_status "FAIL ecs-container-instances: no registered ECS container instances"
+  return 1
 }
 
 terraform -chdir="$TF_DIR" output -json > "$OUT_DIR/terraform-output.json"
@@ -97,6 +120,12 @@ if [ -n "$target_group_arn" ]; then
 fi
 
 if [ -n "$cluster_name" ] && [ -n "$service_name" ]; then
+  if wait_for_ecs_capacity "$cluster_name"; then
+    aws ecs wait services-stable --cluster "$cluster_name" --services "$service_name" \
+      && log_status "PASS ecs-service-stable" \
+      || log_status "FAIL ecs-service-stable"
+  fi
+
   capture ecs-service aws ecs describe-services --cluster "$cluster_name" --services "$service_name"
   aws ecs list-tasks --cluster "$cluster_name" --service-name "$service_name" > "$OUT_DIR/ecs-task-arns.json"
   task_arns="$(jq -r '.taskArns[]?' "$OUT_DIR/ecs-task-arns.json" | tr '\n' ' ')"
@@ -150,6 +179,11 @@ if [ -n "$application_url" ]; then
   curl --fail --silent --show-error --max-time 30 "$application_url/api/readiness" > "$OUT_DIR/readiness.json" \
     && log_status "PASS runtime-readiness" \
     || log_status "FAIL runtime-readiness"
+fi
+
+if [ "$failures" -gt 0 ]; then
+  echo "Post-apply verification found $failures failure(s); evidence written to $OUT_DIR"
+  exit 1
 fi
 
 echo "Post-apply verification evidence written to $OUT_DIR"
