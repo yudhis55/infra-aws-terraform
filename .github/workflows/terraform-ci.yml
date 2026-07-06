@@ -15,6 +15,7 @@ on:
         options:
           - plan
           - apply
+          - prepare-destroy
           - destroy
 
 permissions:
@@ -106,7 +107,7 @@ jobs:
     needs: [validate-and-scan]
     if: >-
       github.event_name == 'workflow_dispatch' &&
-      (inputs.action == 'plan' || inputs.action == 'apply' || inputs.action == 'destroy') &&
+      (inputs.action == 'plan' || inputs.action == 'apply' || inputs.action == 'prepare-destroy' || inputs.action == 'destroy') &&
       vars.AWS_REGION != '' &&
       vars.TF_VAR_PROJECT_NAME != '' &&
       vars.TF_VAR_APP_IMAGE_URI != ''
@@ -139,7 +140,7 @@ jobs:
         run: terraform init
 
       - name: Configure destroy cost-saving overrides
-        if: inputs.action == 'destroy'
+        if: inputs.action == 'prepare-destroy' || inputs.action == 'destroy'
         run: |
           echo "TF_VAR_enable_deletion_protection=false" >> "$GITHUB_ENV"
           echo "TF_VAR_skip_final_snapshot=true" >> "$GITHUB_ENV"
@@ -171,7 +172,7 @@ jobs:
     needs: [plan]
     if: >-
       github.event_name == 'workflow_dispatch' &&
-      (inputs.action == 'apply' || inputs.action == 'destroy') &&
+      (inputs.action == 'apply' || inputs.action == 'prepare-destroy' || inputs.action == 'destroy') &&
       vars.AWS_REGION != '' &&
       vars.TF_VAR_PROJECT_NAME != '' &&
       vars.TF_VAR_APP_IMAGE_URI != ''
@@ -205,7 +206,7 @@ jobs:
         run: terraform init
 
       - name: Configure destroy cost-saving overrides
-        if: inputs.action == 'destroy'
+        if: inputs.action == 'prepare-destroy' || inputs.action == 'destroy'
         run: |
           echo "TF_VAR_enable_deletion_protection=false" >> "$GITHUB_ENV"
           echo "TF_VAR_skip_final_snapshot=true" >> "$GITHUB_ENV"

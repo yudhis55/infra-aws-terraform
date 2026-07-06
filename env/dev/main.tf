@@ -180,8 +180,9 @@ module "ecs" {
   health_check_path      = var.health_check_path
 
   # HTTPS configuration
-  enable_https        = var.enable_https
-  acm_certificate_arn = local.alb_certificate_arn
+  enable_https               = var.enable_https
+  enable_deletion_protection = var.enable_deletion_protection
+  acm_certificate_arn        = local.alb_certificate_arn
 
   depends_on = [module.networking, module.rds, module.cdn]
 }

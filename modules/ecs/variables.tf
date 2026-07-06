@@ -203,6 +203,12 @@ variable "enable_https" {
   default     = false
 }
 
+variable "enable_deletion_protection" {
+  description = "Enable ALB deletion protection. Keep true for production-like experiments."
+  type        = bool
+  default     = true
+}
+
 variable "acm_certificate_arn" {
   description = "ACM certificate ARN for the ALB HTTPS listener"
   type        = string
