@@ -5,6 +5,15 @@ apply. Every remaining finding must be either fixed, accepted as scanner
 context, or deferred as future hardening. Deferred items must not be claimed as
 implemented evidence in BAB 4.
 
+## Current Status
+
+- Fixed and accepted/deferred findings below were used for the controlled apply
+  baseline.
+- Apply run `28765301534` succeeded with post-apply verification PASS.
+- Destroy run `28767137374` later removed the stack for cost control.
+- Any BAB 4 final claim still needs a fresh artifact package if the stack is
+  applied again for the final experiment run.
+
 ## Fixed Before Apply
 
 - S3 CORS wildcard: browser upload CORS is restricted to explicit HTTP(S)
@@ -15,6 +24,9 @@ implemented evidence in BAB 4.
   managed security headers response policy.
 - ECS writable root filesystem: the app container declares
   `readonlyRootFilesystem=true` with `/tmp` tmpfs.
+- ECS container instance OS lifecycle: launch template now resolves the
+  AWS-managed ECS-optimized Amazon Linux 2023 AMI from SSM Parameter Store,
+  avoiding new Amazon Linux 2 instances after its 2026-06-30 end of support.
 - Next.js image optimizer runtime cache risk: disabled through
   `images.unoptimized=true` because public media is served by CloudFront.
 - CloudWatch retention shorter than one year: ECS, VPC Flow Logs, WAF, DNS
@@ -114,3 +126,5 @@ implemented evidence in BAB 4.
 - VPC Flow Logs and CloudWatch retention evidence.
 - ECS task definition evidence showing immutable image SHA, read-only root
   filesystem, and no runtime `EROFS` errors.
+- ZAP, k6, functional smoke, and CloudWatch evidence before writing final BAB 4
+  results.

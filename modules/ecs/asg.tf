@@ -1,19 +1,13 @@
 # ==================== ECS Optimized AMI Data Source ====================
-# Get latest ECS-optimized Amazon Linux 2 AMI
+# Use the AWS-managed SSM parameter so ECS container instances launch on the
+# current ECS-optimized Amazon Linux 2023 AMI instead of end-of-support AL2.
 
-data "aws_ami" "ecs_ami" {
-  most_recent = true
-  owners      = ["amazon"]
+data "aws_ssm_parameter" "ecs_ami" {
+  name = "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended"
+}
 
-  filter {
-    name   = "name"
-    values = ["amzn2-ami-ecs-hvm-*-x86_64-ebs"]
-  }
-
-  filter {
-    name   = "state"
-    values = ["available"]
-  }
+locals {
+  ecs_ami = jsondecode(data.aws_ssm_parameter.ecs_ami.value)
 }
 
 # ==================== EC2 Launch Template ====================
@@ -21,7 +15,7 @@ data "aws_ami" "ecs_ami" {
 
 resource "aws_launch_template" "ecs" {
   name_prefix   = "${var.project_name}-ecs-lt-"
-  image_id      = data.aws_ami.ecs_ami.id
+  image_id      = local.ecs_ami.image_id
   instance_type = var.ecs_instance_type
 
   iam_instance_profile {
