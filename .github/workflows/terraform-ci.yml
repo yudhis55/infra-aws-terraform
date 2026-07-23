@@ -12,7 +12,7 @@ on:
         required: true
         default: plan
         type: choice
-        options: [plan, apply, destroy]
+        options: [plan, bootstrap-ecr, apply, destroy]
 
 permissions:
   contents: read
@@ -111,13 +111,13 @@ jobs:
       github.event_name == 'workflow_dispatch' &&
       vars.AWS_REGION != '' &&
       vars.TF_VAR_PROJECT_NAME != '' &&
-      vars.TF_VAR_APP_IMAGE_URI != ''
+      (inputs.action == 'bootstrap-ecr' || vars.TF_VAR_APP_IMAGE_URI != '')
     permissions:
       contents: read
       id-token: write
     env:
       TF_VAR_project_name: ${{ vars.TF_VAR_PROJECT_NAME }}
-      TF_VAR_app_image_uri: ${{ vars.TF_VAR_APP_IMAGE_URI }}
+      TF_VAR_app_image_uri: ${{ vars.TF_VAR_APP_IMAGE_URI || '557947229844.dkr.ecr.ap-southeast-3.amazonaws.com/eepistore-repo:0000000000000000000000000000000000000000' }}
       TF_VAR_domain_name: ${{ vars.TF_VAR_DOMAIN_NAME }}
       TF_VAR_route53_zone_id: ${{ vars.TF_VAR_ROUTE53_ZONE_ID }}
       TF_VAR_enable_https: ${{ vars.TF_VAR_ENABLE_HTTPS }}
@@ -147,6 +147,8 @@ jobs:
         run: |
           if [ "${{ inputs.action }}" = "destroy" ]; then
             terraform plan -destroy -out=tfplan
+          elif [ "${{ inputs.action }}" = "bootstrap-ecr" ]; then
+            terraform plan -target=module.ecr -out=tfplan
           else
             terraform plan -out=tfplan
           fi
@@ -167,7 +169,7 @@ jobs:
             ${{ env.TF_WORKING_DIR }}/tfplan-summary.json
           retention-days: 30
       - name: Upload short-lived binary plan
-        if: inputs.action == 'apply' || inputs.action == 'destroy'
+        if: inputs.action == 'bootstrap-ecr' || inputs.action == 'apply' || inputs.action == 'destroy'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: terraform-saved-plan
@@ -175,21 +177,21 @@ jobs:
           retention-days: 1
 
   apply:
-    name: Controlled Apply or Destroy
+    name: Controlled Bootstrap, Apply, or Destroy
     runs-on: ubuntu-latest
     timeout-minutes: 90
     needs: [plan]
     if: >-
       github.event_name == 'workflow_dispatch' &&
       github.ref == 'refs/heads/main' &&
-      (inputs.action == 'apply' || inputs.action == 'destroy')
+      (inputs.action == 'bootstrap-ecr' || inputs.action == 'apply' || inputs.action == 'destroy')
     environment: production
     permissions:
       contents: read
       id-token: write
     env:
       TF_VAR_project_name: ${{ vars.TF_VAR_PROJECT_NAME }}
-      TF_VAR_app_image_uri: ${{ vars.TF_VAR_APP_IMAGE_URI }}
+      TF_VAR_app_image_uri: ${{ vars.TF_VAR_APP_IMAGE_URI || '557947229844.dkr.ecr.ap-southeast-3.amazonaws.com/eepistore-repo:0000000000000000000000000000000000000000' }}
       TF_VAR_domain_name: ${{ vars.TF_VAR_DOMAIN_NAME }}
       TF_VAR_route53_zone_id: ${{ vars.TF_VAR_ROUTE53_ZONE_ID }}
       TF_VAR_enable_https: ${{ vars.TF_VAR_ENABLE_HTTPS }}
@@ -221,6 +223,16 @@ jobs:
       - name: Apply reviewed plan
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform apply -auto-approve tfplan
+      - name: Verify ECR bootstrap
+        if: inputs.action == 'bootstrap-ecr'
+        run: |
+          mkdir -p bootstrap-evidence
+          terraform -chdir="${{ env.TF_WORKING_DIR }}" state list |
+            grep '^module.ecr' > bootstrap-evidence/ecr-state.txt
+          aws ecr describe-repositories \
+            --repository-names "${{ vars.TF_VAR_PROJECT_NAME }}-repo" \
+            --query 'repositories[0].{repositoryUri:repositoryUri,imageTagMutability:imageTagMutability,encryptionType:encryptionConfiguration.encryptionType}' \
+            > bootstrap-evidence/ecr.json
       - name: Run database migrations as one-off ECS task
         if: inputs.action == 'apply'
         run: bash scripts/run-ecs-migration.sh "${{ env.TF_WORKING_DIR }}" migration-evidence
@@ -240,6 +252,13 @@ jobs:
         with:
           name: migration-evidence
           path: migration-evidence
+          retention-days: 30
+      - name: Upload ECR bootstrap evidence
+        if: always() && inputs.action == 'bootstrap-ecr'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ecr-bootstrap-verification
+          path: bootstrap-evidence
           retention-days: 30
       - name: Upload post-apply evidence
         if: always() && inputs.action == 'apply'

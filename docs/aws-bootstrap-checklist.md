@@ -68,11 +68,14 @@ App repository secrets:
 
 ## 5. ECR dan Image Aplikasi
 
-- [ ] ECR repository tersedia. Setelah destroy, buat ulang lewat Terraform tahap
-      awal/target terbatas sebelum publish image baru.
+- [ ] Jika ECR tidak ada setelah destroy, jalankan workflow Terraform dengan
+      `action=bootstrap-ecr`.
+- [ ] Review targeted plan dan approve environment `production`; pastikan plan
+      hanya berisi module ECR dan KMS terkait.
+- [ ] Simpan artifact `ecr-bootstrap-verification`.
 - [ ] Build aplikasi lulus secara lokal dan/atau GitHub Actions.
 - [ ] Push image dengan tag commit SHA, bukan `latest`.
-- [ ] Isi `TF_VAR_APP_IMAGE_URI` memakai URI image immutable.
+- [ ] Isi `TF_VAR_APP_IMAGE_URI` memakai URI digest immutable dari workflow app.
 
 ## 6. Terraform Plan Review
 
