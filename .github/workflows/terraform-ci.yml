@@ -58,17 +58,18 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform validate
       - name: Trivy IaC gate
-        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
-        with:
-          version: v0.67.2
-          scan-type: config
-          scan-ref: .
-          format: sarif
-          output: trivy-iac.sarif
-          severity: CRITICAL,HIGH
-          exit-code: "1"
-          skip-dirs: "**/.terraform"
-          trivyignores: .trivyignore.yaml
+        run: |
+          docker run --rm \
+            -v "$PWD:/src" \
+            aquasec/trivy@sha256:e2b22eac59c02003d8749f5b8d9bd073b62e30fefaef5b7c8371204e0a4b0c08 \
+            config \
+            --format sarif \
+            --output /src/trivy-iac.sarif \
+            --severity CRITICAL,HIGH \
+            --exit-code 1 \
+            --ignorefile /src/.trivyignore.yaml \
+            --skip-dirs /src/env/dev/.terraform \
+            /src
       - name: Checkov IaC gate
         if: always()
         uses: bridgecrewio/checkov-action@7b972723c44fb3d256283fac96fae5d7c1894bb7 # v12
