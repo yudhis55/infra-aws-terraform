@@ -64,7 +64,8 @@ collection, dan destroy hemat biaya. Gunakan bersama
 1. Jika kode app berubah, jalankan workflow app untuk quality gate, scanning,
    SBOM, attestation, dan publish image.
 2. Jika ECR repo belum ada setelah destroy, buat ECR terlebih dahulu melalui
-   Terraform tahap awal/target terbatas sebelum menjalankan `publish-image`.
+   workflow Terraform `action=bootstrap-ecr`. Review targeted saved plan dan
+   approve environment `production` sebelum menjalankan `publish-image`.
 3. Gunakan image digest URI dari output workflow untuk update
    `TF_VAR_APP_IMAGE_URI`.
 4. Terraform menjadi satu-satunya pemilik task definition dan ECS service.
