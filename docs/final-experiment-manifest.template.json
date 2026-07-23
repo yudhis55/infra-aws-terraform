@@ -1,0 +1,10 @@
+{
+  "appCommitSha": "",
+  "infraCommitSha": "",
+  "imageDigest": "",
+  "appPublishRunId": "",
+  "terraformApplyRunId": "",
+  "targetUrl": "https://eepistore.web.id",
+  "region": "ap-southeast-3",
+  "startedAt": ""
+}

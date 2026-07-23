@@ -3,21 +3,27 @@ name: Final Experiment Evidence
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: Safe role preflight or the complete post-apply experiment
+        required: true
+        default: role-preflight
+        type: choice
+        options: [role-preflight, full-experiment]
       app_commit_sha:
         description: Full app commit SHA used to build the deployed image
-        required: true
+        required: false
         type: string
       image_digest:
         description: Deployed image digest in sha256 format
-        required: true
+        required: false
         type: string
       app_publish_run_id:
         description: App publish workflow run ID
-        required: true
+        required: false
         type: string
       terraform_apply_run_id:
         description: Controlled Terraform apply workflow run ID
-        required: true
+        required: false
         type: string
       target_url:
         description: Terraform-created HTTPS application URL
@@ -33,8 +39,51 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  role-preflight:
+    name: Experiment OIDC Role Preflight
+    if: inputs.mode == 'role-preflight'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ secrets.AWS_EXPERIMENT_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Verify assumed role and permitted backend read
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p oidc-preflight
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          CALLER_ARN="$(aws sts get-caller-identity --query Arn --output text)"
+          test "$ACCOUNT_ID" = "557947229844"
+          [[ "$CALLER_ARN" == arn:aws:sts::557947229844:assumed-role/eepistore-infra-experiment-role/* ]]
+          aws s3api get-bucket-location \
+            --bucket eepistore-dev-terraform-state \
+            > oidc-preflight/backend-location.json
+          jq -n \
+            --arg accountId "$ACCOUNT_ID" \
+            --arg callerArn "$CALLER_ARN" \
+            --arg region "${{ vars.AWS_REGION }}" \
+            '{status:"passed",accountId:$accountId,callerArn:$callerArn,region:$region}' \
+            > oidc-preflight/result.json
+
+      - name: Upload OIDC preflight evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: experiment-oidc-preflight
+          path: oidc-preflight
+          retention-days: 30
+
   experiment:
     name: Controlled Runtime Experiment
+    if: inputs.mode == 'full-experiment'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     environment: production
@@ -65,25 +114,28 @@ jobs:
           [[ "$APP_PUBLISH_RUN_ID" =~ ^[0-9]+$ ]]
           [[ "$APP_URL" =~ ^https:// ]]
 
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Check out the exact deployed application source
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: yudhis55/eepistore
           ref: ${{ inputs.app_commit_sha }}
           path: app-source
+          persist-credentials: false
 
-      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
           role-to-assume: ${{ secrets.AWS_EXPERIMENT_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
@@ -324,7 +376,7 @@ jobs:
 
       - name: Upload canonical and raw experiment evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: final-experiment-evidence-${{ github.run_id }}
           path: |

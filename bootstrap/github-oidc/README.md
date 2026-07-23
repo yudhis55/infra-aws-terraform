@@ -48,3 +48,10 @@ karena satu action kurang; tambahkan action minimum yang dibuktikan oleh log
 
 Simpan ARN role experiment sebagai secret repository
 `AWS_EXPERIMENT_ROLE_ARN`. Role ini tidak memiliki izin Terraform apply.
+
+Jalankan `node scripts/validate-experiment-iam.mjs` setelah policy role
+experiment diperbarui. Script tersebut memeriksa IAM Access Analyzer, operasi
+yang memang harus diizinkan, dan operasi mutasi infrastruktur yang harus tetap
+`implicitDeny`. Workflow `Final Experiment Evidence` juga menyediakan mode
+default `role-preflight` untuk membuktikan asumsi OIDC tanpa membutuhkan
+workload aktif.
