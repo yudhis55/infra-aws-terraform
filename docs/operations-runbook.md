@@ -63,19 +63,27 @@ collection, dan destroy hemat biaya. Gunakan bersama
 
 Jalankan hanya setelah controlled apply dan post-apply verification lulus.
 
-1. Pastikan image aktif menggunakan digest dari app publish run.
-2. Tambahkan secret `AWS_EXPERIMENT_ROLE_ARN` sesuai policy
+1. Jalankan workflow `Final Experiment Evidence` dengan mode
+   `role-preflight`. Approve environment `production`, lalu pastikan artifact
+   `experiment-oidc-preflight` berstatus `passed`. Mode ini hanya menguji asumsi
+   role dan pembacaan lokasi bucket backend; tidak menjalankan Terraform.
+2. Pastikan image aktif menggunakan digest dari app publish run.
+3. Tambahkan secret `AWS_EXPERIMENT_ROLE_ARN` sesuai policy
    `bootstrap/github-oidc/experiment-evidence-policy.json`.
-3. Jalankan workflow `Final Experiment Evidence` dari branch `main`.
-4. Isi app commit SHA, image digest, app publish run ID, Terraform apply run ID,
+4. Jalankan workflow yang sama dari `main` dengan mode `full-experiment`.
+5. Isi app commit SHA, image digest, app publish run ID, Terraform apply run ID,
    dan target HTTPS. Workflow menjalankan tiga trial k6 secara tetap.
-5. Review artifact `final-experiment-evidence-<run-id>`. Canonical JSON harus
+6. Review artifact `final-experiment-evidence-<run-id>`. Canonical JSON harus
    berstatus `final`.
-6. Pastikan cleanup database dan prefix S3 eksperimen lulus sebelum destroy.
+7. Pastikan cleanup database dan prefix S3 eksperimen lulus sebelum destroy.
 
 Workflow ini tidak memiliki Terraform apply. ZAP dibatasi allowlist/timeout dan
 k6 dibatasi maksimum 50 VU. DDoS, request flood, dan target di luar domain
 project dilarang.
+
+Setelah perubahan IAM, jalankan `node scripts/validate-experiment-iam.mjs`.
+Hentikan proses jika Access Analyzer mengeluarkan warning/error, izin wajib
+tidak `allowed`, atau aksi mutasi yang dilarang tidak `implicitDeny`.
 
 ### Local Backend Cache
 

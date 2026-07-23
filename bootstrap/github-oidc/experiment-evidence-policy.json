@@ -24,7 +24,7 @@
       "Resource": "arn:aws:kms:ap-southeast-3:557947229844:key/fd2250a6-ed79-4f87-8c18-1d6e14df8e84"
     },
     {
-      "Sid": "RunAndInspectExperimentTasks",
+      "Sid": "InspectExperimentTasks",
       "Effect": "Allow",
       "Action": [
         "ecs:DescribeClusters",
@@ -33,19 +33,26 @@
         "ecs:DescribeTaskDefinition",
         "ecs:DescribeTasks",
         "ecs:ListContainerInstances",
-        "ecs:ListTasks",
-        "ecs:RunTask"
+        "ecs:ListTasks"
       ],
       "Resource": "*"
+    },
+    {
+      "Sid": "RunOnlyEepistoreExperimentTask",
+      "Effect": "Allow",
+      "Action": "ecs:RunTask",
+      "Resource": "arn:aws:ecs:ap-southeast-3:557947229844:task-definition/eepistore-task:*",
+      "Condition": {
+        "ArnEquals": {
+          "ecs:cluster": "arn:aws:ecs:ap-southeast-3:557947229844:cluster/eepistore-cluster"
+        }
+      }
     },
     {
       "Sid": "PassOnlyEepistoreTaskRoles",
       "Effect": "Allow",
       "Action": "iam:PassRole",
-      "Resource": [
-        "arn:aws:iam::557947229844:role/eepistore-ecs-task-*",
-        "arn:aws:iam::557947229844:role/eepistore-ecs-task-exec-*"
-      ],
+      "Resource": "arn:aws:iam::557947229844:role/eepistore-ecs-task-*",
       "Condition": {
         "StringEquals": {
           "iam:PassedToService": "ecs-tasks.amazonaws.com"

@@ -15,6 +15,8 @@ belum ditinjau.
 - Domain dan hosted zone Route53 tetap dipertahankan.
 - Role GitHub OIDC tidak lagi memakai `AdministratorAccess`; policy source
   disimpan di `bootstrap/github-oidc`.
+- Role eksperimen sudah dibuat dan hanya dapat diasumsikan oleh environment
+  `production` pada repository infra.
 
 ## Evidence Rules
 
@@ -27,6 +29,9 @@ belum ditinjau.
 
 | Area | Evidence | Source | Status | BAB 4 Usage |
 | --- | --- | --- | --- | --- |
+| App experiment automation publish | Image digest `sha256:bea6ad33e97f4e6c9f35193f404b26d50358d42f14b309101eefaea7e6d80f52` untuk app commit `487883ff478b83d6f52cde2ae9aa840a277bf0e8` | GitHub Actions app run `30004152382`, artifact `published-image`, SBOM, scan, dan provenance attestation | Valid pre-maintenance baseline | Membuktikan paket otomatisasi dapat dipublikasikan; publish ulang wajib setelah maintenance action masuk `main` |
+| Terraform plan experiment automation | Plan `139 add, 0 change, 0 destroy, 0 replace` untuk infra commit `3e645008e23c491f7799afc4275f484b3b21047b` | GitHub Actions infra run `30004670727`, artifact `terraform-plan-review` | Valid pre-maintenance baseline | Membuktikan arsitektur tetap konsisten sebelum action dan IAM maintenance; plan ulang wajib |
+| Experiment role policy validation | Access Analyzer tanpa finding; tujuh kelompok izin wajib `allowed`; sembilan aksi mutasi infrastruktur `implicitDeny`; policy baru tidak menambah akses | AWS IAM Access Analyzer, IAM policy simulator, dan `scripts/validate-experiment-iam.mjs` pada `2026-07-23` | Valid operational evidence | Bukti least privilege sebelum OIDC preflight; tidak menggantikan pengujian asumsi role dari GitHub |
 | App image publish pre-automation | Image digest `sha256:46834d635ef90087683aa1fb1d29899fd68c1f0a77270fd88c05f8724bb9c2db` untuk app commit `9aed6d5cbbe94177908f1c032e79a7b412b12808` | GitHub Actions app run `29983090390`, artifact `published-image` dan provenance attestation | Stale for final experiment | Bukti baseline immutable; utility eksperimen mengubah source app sehingga publish ulang wajib |
 | Terraform plan pre-automation | Plan `139 add, 0 change, 0 destroy` untuk infra commit `cbd1a51a0adeefa86d48715937d67218658b83d0` | GitHub Actions infra run `29983467498`, artifact `terraform-plan-review` | Stale for final experiment | Bukti baseline plan; workflow, output, policy, dan collector berubah sehingga plan ulang wajib |
 | Experiment automation local validation | Playwright role test, bounded ZAP plan, tiga trial k6, CloudWatch collector, schema validator, cleanup gate, dan dashboard parser | Local validation pada branch `experiment/evidence-automation-20260723` | Draft | Menjadi evidence final hanya setelah CI, image publish, plan, controlled apply, dan live experiment selesai |
@@ -49,7 +54,7 @@ belum ditinjau.
 
 ## Evidence To Capture On Next Apply
 
-1. GitHub Actions app remediation run dan image digest baru.
+1. GitHub Actions app maintenance run dan image digest baru.
 2. Terraform plan artifact dari source remediation.
 3. Post-apply verification artifact pada eksperimen final.
 4. App image digest, SBOM, provenance attestation, dan container scan artifact.
@@ -68,3 +73,7 @@ Workflow `Final Experiment Evidence` menghasilkan satu
 apabila provenance app/infra/image sama, post-apply verification tersedia,
 functional/ZAP/k6/CloudWatch lengkap, dan cleanup fixture berhasil. Dashboard
 lokal tidak boleh mengganti status atau nilai paket tersebut.
+
+Input operator untuk paket final dicatat memakai
+`docs/final-experiment-manifest.template.json`. Template tidak boleh diisi
+dengan secret dan bukan pengganti artifact GitHub Actions.
