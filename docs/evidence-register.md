@@ -29,8 +29,11 @@ belum ditinjau.
 
 | Area | Evidence | Source | Status | BAB 4 Usage |
 | --- | --- | --- | --- | --- |
-| App experiment automation publish | Image digest `sha256:bea6ad33e97f4e6c9f35193f404b26d50358d42f14b309101eefaea7e6d80f52` untuk app commit `487883ff478b83d6f52cde2ae9aa840a277bf0e8` | GitHub Actions app run `30004152382`, artifact `published-image`, SBOM, scan, dan provenance attestation | Valid pre-maintenance baseline | Membuktikan paket otomatisasi dapat dipublikasikan; publish ulang wajib setelah maintenance action masuk `main` |
-| Terraform plan experiment automation | Plan `139 add, 0 change, 0 destroy, 0 replace` untuk infra commit `3e645008e23c491f7799afc4275f484b3b21047b` | GitHub Actions infra run `30004670727`, artifact `terraform-plan-review` | Valid pre-maintenance baseline | Membuktikan arsitektur tetap konsisten sebelum action dan IAM maintenance; plan ulang wajib |
+| App final experiment image publish | Image digest `sha256:67d7b6ba0df5059d13276b41b2b9a83a66d24ef283ec553eefb67ab58f8d7df6` untuk app commit `50b26b1488c738f4d332d4cfa6d7d027479ce97d` | GitHub Actions app run `30008122012`, artifact `published-image`, SBOM, container scan, dan provenance attestation | Valid final pre-apply baseline | Sumber image immutable untuk controlled apply berikutnya |
+| Terraform final pre-apply plan | Plan `139 add, 0 change, 0 destroy, 0 replace` selama 16 detik untuk infra commit `c8da6893084be4506617fbcb775acc49dde84463` | GitHub Actions infra run `30008739652`, artifact `terraform-plan-review` | Valid final pre-apply baseline | Bukti review arsitektur dan biaya perubahan sebelum controlled apply; belum membuktikan resource sudah aktif |
+| Experiment OIDC role preflight | Asumsi role `eepistore-infra-experiment-role`, akun `557947229844`, region `ap-southeast-3`, dan pembacaan lokasi backend berhasil | GitHub Actions infra run `30008016042`, artifact `experiment-oidc-preflight` | Valid operational evidence | Bukti role eksperimen dapat digunakan dari environment `production` tanpa izin Terraform apply |
+| App experiment automation publish | Image digest `sha256:bea6ad33e97f4e6c9f35193f404b26d50358d42f14b309101eefaea7e6d80f52` untuk app commit `487883ff478b83d6f52cde2ae9aa840a277bf0e8` | GitHub Actions app run `30004152382`, artifact `published-image`, SBOM, scan, dan provenance attestation | Stale | Digantikan app run `30008122012` setelah maintenance action |
+| Terraform plan experiment automation | Plan `139 add, 0 change, 0 destroy, 0 replace` untuk infra commit `3e645008e23c491f7799afc4275f484b3b21047b` | GitHub Actions infra run `30004670727`, artifact `terraform-plan-review` | Stale | Digantikan infra run `30008739652` setelah maintenance action dan hardening IAM |
 | Experiment role policy validation | Access Analyzer tanpa finding; tujuh kelompok izin wajib `allowed`; sembilan aksi mutasi infrastruktur `implicitDeny`; policy baru tidak menambah akses | AWS IAM Access Analyzer, IAM policy simulator, dan `scripts/validate-experiment-iam.mjs` pada `2026-07-23` | Valid operational evidence | Bukti least privilege sebelum OIDC preflight; tidak menggantikan pengujian asumsi role dari GitHub |
 | App image publish pre-automation | Image digest `sha256:46834d635ef90087683aa1fb1d29899fd68c1f0a77270fd88c05f8724bb9c2db` untuk app commit `9aed6d5cbbe94177908f1c032e79a7b412b12808` | GitHub Actions app run `29983090390`, artifact `published-image` dan provenance attestation | Stale for final experiment | Bukti baseline immutable; utility eksperimen mengubah source app sehingga publish ulang wajib |
 | Terraform plan pre-automation | Plan `139 add, 0 change, 0 destroy` untuk infra commit `cbd1a51a0adeefa86d48715937d67218658b83d0` | GitHub Actions infra run `29983467498`, artifact `terraform-plan-review` | Stale for final experiment | Bukti baseline plan; workflow, output, policy, dan collector berubah sehingga plan ulang wajib |
@@ -54,17 +57,17 @@ belum ditinjau.
 
 ## Evidence To Capture On Next Apply
 
-1. GitHub Actions app maintenance run dan image digest baru.
-2. Terraform plan artifact dari source remediation.
-3. Post-apply verification artifact pada eksperimen final.
-4. App image digest, SBOM, provenance attestation, dan container scan artifact.
-5. ZAP JSON/HTML report.
-6. k6 summary JSON.
-7. Runtime smoke evidence for HTTPS, redirect, health, readiness, login, media
+Prasyarat image, OIDC preflight, dan plan final sudah tersedia. Controlled apply
+belum dijalankan. Evidence berikut masih harus diambil:
+
+1. Post-apply verification artifact pada eksperimen final.
+2. ZAP JSON/HTML report.
+3. k6 summary JSON.
+4. Runtime smoke evidence for HTTPS, redirect, health, readiness, login, media
    upload, and private object authorization.
-8. CloudWatch evidence for application logs, target health, ECS service events,
+5. CloudWatch evidence for application logs, target health, ECS service events,
    RDS/RDS Proxy state, WAF association, and alarms/dashboard.
-9. Final destroy verification after evidence is safely captured.
+6. Final destroy verification after evidence is safely captured.
 
 ## Canonical Experiment Package
 
