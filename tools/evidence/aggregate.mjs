@@ -88,6 +88,10 @@ export function aggregate(rawDir, environment = process.env) {
               experimentId: fixtureCleanup.experimentId,
               removedUsers: fixtureCleanup.removedUsers ?? null,
               removedStores: fixtureCleanup.removedStores ?? null,
+              remainingUsers: fixtureCleanup.remainingUsers ?? null,
+              remainingStores: fixtureCleanup.remainingStores ?? null,
+              remainingOrders: fixtureCleanup.remainingOrders ?? null,
+              remainingProducts: fixtureCleanup.remainingProducts ?? null,
               status: "passed",
             }
           : null,
@@ -95,6 +99,8 @@ export function aggregate(rawDir, environment = process.env) {
           ? {
               experimentId: s3Cleanup.experimentId,
               status: s3Cleanup.status,
+              remainingPublicObjects: s3Cleanup.remainingPublicObjects ?? null,
+              remainingPrivateObjects: s3Cleanup.remainingPrivateObjects ?? null,
             }
           : null,
       },
@@ -225,7 +231,14 @@ function conformanceStatus(verification, fixtureSetup, fixtureCleanup, s3Cleanup
   if (fixtureSetup.experimentId !== fixtureCleanup.experimentId) return "failed";
   if (
     fixtureSetup.experimentId !== s3Cleanup.experimentId ||
-    s3Cleanup.status !== "passed"
+    s3Cleanup.status !== "passed" ||
+    fixtureCleanup.removedUsers !== 4 ||
+    fixtureCleanup.remainingUsers !== 0 ||
+    fixtureCleanup.remainingStores !== 0 ||
+    fixtureCleanup.remainingOrders !== 0 ||
+    fixtureCleanup.remainingProducts !== 0 ||
+    s3Cleanup.remainingPublicObjects !== 0 ||
+    s3Cleanup.remainingPrivateObjects !== 0
   ) {
     return "failed";
   }
