@@ -17,7 +17,8 @@ module "networking" {
   private_app_subnet_ids  = module.vpc.private_app_subnets
   private_data_subnet_ids = module.vpc.private_data_subnets
   s3_endpoint_allowed_bucket_arns = [
-    module.storage.bucket_arn
+    module.storage.public_bucket_arn,
+    module.storage.private_bucket_arn
   ]
 }
 
@@ -68,9 +69,9 @@ module "cdn" {
 
   project_name                = var.project_name
   environment                 = var.environment
-  bucket_id                   = module.storage.bucket_id
-  bucket_arn                  = module.storage.bucket_arn
-  bucket_regional_domain_name = module.storage.bucket_regional_domain_name
+  bucket_id                   = module.storage.public_bucket_id
+  bucket_arn                  = module.storage.public_bucket_arn
+  bucket_regional_domain_name = module.storage.public_bucket_regional_domain_name
   price_class                 = var.cloudfront_price_class
   aliases                     = local.media_domain_enabled ? [local.media_domain_name] : []
   viewer_certificate_acm_arn  = local.media_certificate_arn
@@ -102,7 +103,6 @@ module "rds" {
   environment                = var.environment
   db_name                    = var.db_name
   db_username                = var.db_username
-  db_password                = var.db_password
   db_engine_version          = var.db_engine_version
   db_instance_class          = var.db_instance_class
   db_allocated_storage       = var.db_allocated_storage
@@ -139,22 +139,21 @@ module "ecs" {
 
   # Network configuration
   public_subnets        = module.vpc.public_subnets
-  private_subnets       = module.vpc.private_app_subnets # For backward compatibility
   private_app_subnets   = module.vpc.private_app_subnets
   alb_security_group_id = module.networking.alb_security_group_id
   ecs_security_group_id = module.networking.ecs_security_group_id
-
-  create_alb_security_group = false
-  create_ecs_security_group = false
 
   # Container image
   ecr_image = var.app_image_uri
 
   # EC2 Auto Scaling configuration
-  ecs_instance_type    = var.ecs_instance_type
-  ecs_min_size         = var.ecs_min_size
-  ecs_max_size         = var.ecs_max_size
-  ecs_desired_capacity = var.ecs_desired_capacity
+  ecs_instance_type     = var.ecs_instance_type
+  asg_min_size          = var.ecs_instance_min_size
+  asg_max_size          = var.ecs_instance_max_size
+  asg_desired_capacity  = var.ecs_instance_desired_capacity
+  service_min_tasks     = var.ecs_service_min_tasks
+  service_max_tasks     = var.ecs_service_max_tasks
+  service_desired_count = var.ecs_service_desired_count
 
   # ECS Task configuration
   ecs_task_cpu    = var.ecs_task_cpu
@@ -164,20 +163,19 @@ module "ecs" {
   rds_endpoint    = coalesce(module.rds.rds_proxy_endpoint, module.rds.rds_instance_address)
   rds_port        = "5432"
   rds_database    = var.db_name
-  rds_secrets_arn = var.secrets_manager_secret_arn != "" ? var.secrets_manager_secret_arn : module.rds.rds_secrets_manager_secret_arn
+  rds_secrets_arn = module.rds.rds_secrets_manager_secret_arn
 
   # Application runtime configuration
   app_base_url           = var.app_base_url
-  auth_secret            = var.auth_secret
   app_secrets_kms_key_id = module.rds.rds_kms_key_arn
-  s3_bucket_name         = module.storage.bucket_id
-  s3_bucket_arn          = module.storage.bucket_arn
+  s3_public_bucket_name  = module.storage.public_bucket_id
+  s3_public_bucket_arn   = module.storage.public_bucket_arn
+  s3_private_bucket_name = module.storage.private_bucket_id
+  s3_private_bucket_arn  = module.storage.private_bucket_arn
   s3_region              = var.aws_region
   s3_public_base_url     = module.cdn.public_base_url
   smtp_host              = var.smtp_host
   smtp_port              = var.smtp_port
-  smtp_user              = var.smtp_user
-  smtp_pass              = var.smtp_pass
   smtp_from              = var.smtp_from
   health_check_path      = var.health_check_path
   alb_logs_force_destroy = var.force_destroy
@@ -212,7 +210,8 @@ module "monitoring" {
   environment                = var.environment
   aws_region                 = var.aws_region
   alert_email                = var.alert_email
-  ecs_min_size               = var.ecs_min_size
+  ecs_min_running_tasks      = var.ecs_service_min_tasks
+  asg_min_size               = var.ecs_instance_min_size
   ecs_cluster_name           = module.ecs.ecs_cluster_name
   ecs_service_name           = module.ecs.ecs_service_name
   asg_name                   = module.ecs.asg_name

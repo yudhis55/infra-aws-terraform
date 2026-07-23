@@ -81,28 +81,3 @@ resource "aws_s3_bucket_lifecycle_configuration" "terraform_state" {
     }
   }
 }
-
-resource "aws_dynamodb_table" "terraform_locks" {
-  name         = "${var.project_name}-${var.environment}-terraform-locks"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
-
-  server_side_encryption {
-    enabled     = true
-    kms_key_arn = aws_kms_key.terraform_state.arn
-  }
-
-  point_in_time_recovery {
-    enabled = true
-  }
-
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-terraform-locks"
-    Environment = var.environment
-  }
-}

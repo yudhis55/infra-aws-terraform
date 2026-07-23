@@ -1,4 +1,4 @@
-# Copy this file to backend.tf after the state bucket and lock table exist.
+# Copy this file to backend.tf after the state bucket exists.
 # Then run:
 #   terraform init -migrate-state
 
@@ -7,8 +7,8 @@ terraform {
     bucket         = "replace-with-terraform-state-bucket"
     key            = "eepistore/dev/terraform.tfstate"
     region         = "ap-southeast-3"
-    dynamodb_table = "replace-with-terraform-lock-table"
-    kms_key_id     = "replace-with-terraform-state-kms-key-arn"
-    encrypt        = true
+    use_lockfile = true
+    kms_key_id   = "replace-with-terraform-state-kms-key-arn"
+    encrypt      = true
   }
 }

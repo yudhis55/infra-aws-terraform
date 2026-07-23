@@ -12,11 +12,8 @@ resource "aws_ecs_cluster" "main" {
 }
 
 locals {
-  create_alb_security_group = var.create_alb_security_group
-  create_ecs_security_group = var.create_ecs_security_group
-
-  alb_security_group_id = local.create_alb_security_group ? aws_security_group.alb_sg[0].id : var.alb_security_group_id
-  ecs_security_group_id = local.create_ecs_security_group ? aws_security_group.ecs_sg[0].id : var.ecs_security_group_id
+  alb_security_group_id = var.alb_security_group_id
+  ecs_security_group_id = var.ecs_security_group_id
   application_base_url  = var.app_base_url != "" ? var.app_base_url : "http://${aws_lb.main.dns_name}"
 
   app_environment = [
@@ -49,8 +46,12 @@ locals {
       value = "require"
     },
     {
-      name  = "S3_BUCKET"
-      value = var.s3_bucket_name
+      name  = "S3_PUBLIC_BUCKET"
+      value = var.s3_public_bucket_name
+    },
+    {
+      name  = "S3_PRIVATE_BUCKET"
+      value = var.s3_private_bucket_name
     },
     {
       name  = "S3_REGION"
@@ -90,14 +91,6 @@ locals {
     {
       name      = "AUTH_SECRET"
       valueFrom = "${aws_secretsmanager_secret.app.arn}:AUTH_SECRET::"
-    },
-    {
-      name      = "SMTP_USER"
-      valueFrom = "${aws_secretsmanager_secret.app.arn}:SMTP_USER::"
-    },
-    {
-      name      = "SMTP_PASS"
-      valueFrom = "${aws_secretsmanager_secret.app.arn}:SMTP_PASS::"
     }
   ]
 }
@@ -122,66 +115,8 @@ resource "aws_secretsmanager_secret" "app" {
 resource "aws_secretsmanager_secret_version" "app" {
   secret_id = aws_secretsmanager_secret.app.id
   secret_string = jsonencode({
-    AUTH_SECRET = var.auth_secret != "" ? var.auth_secret : random_password.auth_secret.result
-    SMTP_USER   = var.smtp_user
-    SMTP_PASS   = var.smtp_pass
+    AUTH_SECRET = random_password.auth_secret.result
   })
-}
-
-# ==================== ALB & Security Groups ====================
-
-resource "aws_security_group" "alb_sg" {
-  count       = local.create_alb_security_group ? 1 : 0
-  name        = "${var.project_name}-alb-sg"
-  vpc_id      = var.vpc_id
-  description = "Security group for ALB"
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow HTTP"
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound"
-  }
-
-  tags = {
-    Name = "${var.project_name}-alb-sg"
-  }
-}
-
-resource "aws_security_group" "ecs_sg" {
-  count       = local.create_ecs_security_group ? 1 : 0
-  name        = "${var.project_name}-ecs-sg"
-  vpc_id      = var.vpc_id
-  description = "Security group for ECS tasks"
-
-  ingress {
-    from_port       = 3000
-    to_port         = 65535 # Dynamic port range for ECS task ports
-    protocol        = "tcp"
-    security_groups = [local.alb_security_group_id]
-    description     = "Allow traffic from ALB"
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound"
-  }
-
-  tags = {
-    Name = "${var.project_name}-ecs-sg"
-  }
 }
 
 # Application Load Balancer
@@ -273,7 +208,7 @@ resource "aws_ecs_service" "app" {
   name            = "${var.project_name}-service"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
-  desired_count   = var.ecs_desired_capacity
+  desired_count   = var.service_desired_count
 
   capacity_provider_strategy {
     capacity_provider = aws_ecs_capacity_provider.ecs.name
@@ -289,6 +224,12 @@ resource "aws_ecs_service" "app" {
 
   deployment_maximum_percent         = 200
   deployment_minimum_healthy_percent = 100
+  health_check_grace_period_seconds  = 120
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
 
   depends_on = [
     aws_ecs_cluster_capacity_providers.main,
@@ -304,8 +245,8 @@ resource "aws_ecs_service" "app" {
 # ==================== Application Auto Scaling ====================
 
 resource "aws_appautoscaling_target" "ecs_service" {
-  max_capacity       = var.ecs_max_size
-  min_capacity       = var.ecs_min_size
+  max_capacity       = var.service_max_tasks
+  min_capacity       = var.service_min_tasks
   resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.app.name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"

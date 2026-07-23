@@ -21,8 +21,14 @@ variable "alert_email" {
   sensitive   = true
 }
 
-variable "ecs_min_size" {
-  description = "Minimum number of ECS instances (for alarm thresholds)"
+variable "ecs_min_running_tasks" {
+  description = "Minimum expected running ECS service tasks"
+  type        = number
+  default     = 2
+}
+
+variable "asg_min_size" {
+  description = "Minimum expected in-service EC2 instances"
   type        = number
   default     = 2
 }

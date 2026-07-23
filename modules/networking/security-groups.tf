@@ -24,11 +24,11 @@ resource "aws_security_group" "alb" {
   }
 
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound traffic"
+    from_port   = 32768
+    to_port     = 65535
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+    description = "Allow ALB responses to ECS dynamic host ports"
   }
 
   tags = {
@@ -55,12 +55,14 @@ resource "aws_security_group" "ecs" {
     description     = "Allow ALB to reach ECS dynamic host ports"
   }
 
+  # Runtime egress is required for S3 gateway access, interface endpoints, DNS,
+  # RDS Proxy, and explicitly configured external SMTP/payment integrations.
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound traffic"
+    description = "Allow application runtime outbound traffic"
   }
 
   tags = {
@@ -88,14 +90,6 @@ resource "aws_security_group" "rds" {
       security_groups = [aws_security_group.ecs.id]
       description     = "Break-glass direct PostgreSQL access from ECS"
     }
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound traffic"
   }
 
   tags = {

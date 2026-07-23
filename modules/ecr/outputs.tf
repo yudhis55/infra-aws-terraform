@@ -1,3 +1,4 @@
 output "repository_url" {
-  value = aws_ecr_repository.app.repository_url
+  description = "URL of the application ECR repository."
+  value       = aws_ecr_repository.app.repository_url
 }

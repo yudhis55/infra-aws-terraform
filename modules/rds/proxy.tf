@@ -11,7 +11,7 @@ resource "aws_db_proxy" "main" {
 
   auth {
     auth_scheme = "SECRETS"
-    secret_arn  = var.secrets_manager_secret_arn != "" ? var.secrets_manager_secret_arn : aws_secretsmanager_secret.db_credentials[0].arn
+    secret_arn  = aws_db_instance.main.master_user_secret[0].secret_arn
   }
 
   tags = {
@@ -20,7 +20,6 @@ resource "aws_db_proxy" "main" {
 
   depends_on = [aws_iam_role_policy.proxy_policy]
 }
-
 resource "aws_db_proxy_default_target_group" "main" {
   count         = var.enable_rds_proxy ? 1 : 0
   db_proxy_name = aws_db_proxy.main[0].name
@@ -31,7 +30,6 @@ resource "aws_db_proxy_default_target_group" "main" {
     max_idle_connections_percent = var.proxy_max_idle_connections
   }
 }
-
 resource "aws_db_proxy_target" "main" {
   count                  = var.enable_rds_proxy ? 1 : 0
   db_instance_identifier = aws_db_instance.main.identifier
@@ -124,7 +122,7 @@ resource "aws_iam_role_policy" "proxy_policy" {
           "secretsmanager:GetRandomPassword"
         ]
         Resource = [
-          var.secrets_manager_secret_arn != "" ? var.secrets_manager_secret_arn : aws_secretsmanager_secret.db_credentials[0].arn
+          aws_db_instance.main.master_user_secret[0].secret_arn
         ]
       },
       {
@@ -133,31 +131,5 @@ resource "aws_iam_role_policy" "proxy_policy" {
         Resource = aws_kms_key.rds.arn
       }
     ]
-  })
-}
-
-# Secrets Manager Secret for DB Credentials (if not provided)
-resource "aws_secretsmanager_secret" "db_credentials" {
-  count                   = var.secrets_manager_secret_arn == "" ? 1 : 0
-  name                    = "${var.project_name}/${var.environment}/rds/credentials"
-  description             = "RDS database credentials for ${var.project_name}"
-  recovery_window_in_days = 7
-  kms_key_id              = aws_kms_key.rds.arn
-
-  tags = {
-    Name = "${var.project_name}-${var.environment}-rds-secret"
-  }
-}
-
-resource "aws_secretsmanager_secret_version" "db_credentials" {
-  count     = var.secrets_manager_secret_arn == "" ? 1 : 0
-  secret_id = aws_secretsmanager_secret.db_credentials[0].id
-  secret_string = jsonencode({
-    username = var.db_username
-    password = var.db_password
-    engine   = "postgres"
-    host     = aws_db_instance.main.address
-    port     = aws_db_instance.main.port
-    dbname   = var.db_name
   })
 }

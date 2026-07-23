@@ -21,12 +21,6 @@ variable "db_username" {
   sensitive   = true
 }
 
-variable "db_password" {
-  description = "Master password for RDS database (recommended to use Secrets Manager)"
-  type        = string
-  sensitive   = true
-}
-
 variable "db_engine_version" {
   description = "PostgreSQL engine version"
   type        = string
@@ -118,7 +112,6 @@ variable "rds_security_group_id" {
   description = "Security group ID for RDS instance"
   type        = string
 }
-
 variable "rds_proxy_source_sg_id" {
   description = "Security group ID allowed to connect to RDS Proxy"
   type        = string
@@ -153,10 +146,4 @@ variable "proxy_connection_borrow_timeout" {
   description = "Connection borrow timeout in seconds"
   type        = number
   default     = 120
-}
-
-variable "secrets_manager_secret_arn" {
-  description = "ARN of Secrets Manager secret containing DB credentials"
-  type        = string
-  default     = ""
 }

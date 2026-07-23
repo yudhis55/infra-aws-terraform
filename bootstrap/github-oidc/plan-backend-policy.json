@@ -1,0 +1,35 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListTerraformStateBucket",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetBucketLocation",
+        "s3:ListBucket"
+      ],
+      "Resource": "arn:aws:s3:::eepistore-dev-terraform-state"
+    },
+    {
+      "Sid": "ReadStateAndManageLockfile",
+      "Effect": "Allow",
+      "Action": [
+        "s3:DeleteObject",
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": "arn:aws:s3:::eepistore-dev-terraform-state/eepistore/dev/*"
+    },
+    {
+      "Sid": "UseTerraformStateKey",
+      "Effect": "Allow",
+      "Action": [
+        "kms:Decrypt",
+        "kms:DescribeKey",
+        "kms:Encrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Resource": "arn:aws:kms:ap-southeast-3:557947229844:key/fd2250a6-ed79-4f87-8c18-1d6e14df8e84"
+    }
+  ]
+}

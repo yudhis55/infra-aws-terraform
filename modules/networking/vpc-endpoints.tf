@@ -15,14 +15,6 @@ resource "aws_security_group" "vpc_endpoint_sg" {
     description     = "Allow HTTPS from ECS tasks"
   }
 
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound traffic"
-  }
-
   tags = {
     Name = "${var.project_name}-${var.environment}-vpc-endpoint-sg"
   }
