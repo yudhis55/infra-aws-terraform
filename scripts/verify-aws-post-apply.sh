@@ -5,7 +5,28 @@ TF_DIR="${1:-env/dev}"
 OUT_DIR="$(pwd)/${2:-verification-evidence}"
 
 mkdir -p "$OUT_DIR"
+mkdir -p "$OUT_DIR/timing"
 failures=0
+started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+started_epoch="$(date +%s)"
+
+write_timing() {
+  local exit_code="$?"
+  local ended_at
+  local ended_epoch
+  local status="passed"
+  ended_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  ended_epoch="$(date +%s)"
+  if [ "$exit_code" -ne 0 ]; then status="failed"; fi
+  jq -n \
+    --arg status "$status" \
+    --arg startedAt "$started_at" \
+    --arg endedAt "$ended_at" \
+    --argjson durationSeconds "$((ended_epoch - started_epoch))" \
+    '{status:$status, startedAt:$startedAt, endedAt:$endedAt, durationSeconds:$durationSeconds}' \
+    > "$OUT_DIR/timing/verification-timing.json"
+}
+trap write_timing EXIT
 
 log_status() {
   echo "$1" >> "$OUT_DIR/verification-status.txt"

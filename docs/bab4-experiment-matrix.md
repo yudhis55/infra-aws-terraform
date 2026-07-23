@@ -5,21 +5,22 @@ Status `Missing` berarti klaim belum boleh dimasukkan sebagai hasil final.
 
 | Experiment | Input | Execution | Required Artifact | Metrics / Checks | Pass Criteria | Current Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| App quality gate | Latest app commit | App workflow `ci` or `publish-image` | Quality logs | lint, typecheck, unit tests | All pass | Remediation valid locally; GitHub run missing |
+| App quality gate | Latest app commit | App workflow `ci` or `publish-image` | Quality logs | lint, typecheck, unit tests | All pass | Valid candidate run `29983090390`; rerun after experiment utility changes |
 | SAST | Latest app commit | CodeQL in app workflow | CodeQL result | high/critical findings | No untriaged high/critical | Valid baseline; rerun for final package |
 | SCA | `package-lock.json` | npm audit gate | `npm-audit.json` | known vulnerabilities | No unaccepted high/critical | Valid baseline; rerun for final package |
 | Container scan | Docker image | Trivy image scan | `trivy-image.txt` | high/critical CVEs | No untriaged high/critical | Valid baseline; rerun if image changes |
-| Image publish | Immutable app commit SHA | App workflow `publish-image` | `published-image` and attestation | image digest and source SHA | Terraform input uses digest URI | Previous image stale; remediation publish missing |
-| ECR bootstrap | Terraform ECR module | Terraform target/minimal apply before image publish | ECR repository URL | repo exists and image tag can be pushed | ECR available before full ECS apply | Missing after destroy; required before next publish |
-| IaC quality gate | Infra commit | Terraform workflow scan job | `terraform-security-evidence` | fmt, validate, TFLint, Trivy, Checkov | All gates pass with documented exact suppressions | Remediation valid locally; GitHub run missing |
-| Terraform plan | Final GitHub vars/secrets | Terraform workflow `action=plan` or apply run plan job | `terraform-plan/tfplan.txt` | add/change/destroy summary, critical resources | No unexpected destroy/replacement | Missing final post-destroy rerun |
+| Image publish | Immutable app commit SHA | App workflow `publish-image` | `published-image` and attestation | image digest and source SHA | Terraform input uses digest URI | Valid candidate run `29983090390`; republish after automation changes |
+| ECR bootstrap | Terraform ECR module | Terraform target/minimal apply before image publish | ECR repository URL | repo exists and image tag can be pushed | ECR available before full ECS apply | Valid bootstrap; ECR retained |
+| IaC quality gate | Infra commit | Terraform workflow scan job | `terraform-security-evidence` | fmt, validate, TFLint, Trivy, Checkov | All gates pass with documented exact suppressions | Valid candidate run `29983467498`; rerun after automation changes |
+| Terraform plan | Final GitHub vars/secrets | Terraform workflow `action=plan` or apply run plan job | `terraform-plan-review/tfplan.txt` | add/change/destroy summary, critical resources | No unexpected destroy/replacement | Valid candidate run `29983467498`: `139/0/0`; rerun required |
 | Terraform apply | Reviewed plan from same run | Terraform workflow `action=apply` | apply log and `post-apply-verification` | drift, AWS resources, runtime checks | All required checks PASS | Valid baseline run `28765301534`; rerun for final package if needed |
 | AWS actual verification | Terraform outputs | `scripts/verify-aws-post-apply.sh` plus manual review | verification JSON files | VPC, ALB, ECS, RDS, RDS Proxy, S3, CloudFront, WAF | State matches AWS actual resources | Valid baseline; manual evidence incomplete |
-| Runtime smoke | Live app domain | curl/browser checks | smoke evidence | HTTPS, HTTP redirect, health, readiness | Expected 200/redirect and JSON `status=ok` | Health/readiness valid baseline; login/upload missing |
-| Functional checks | Seeded users/data | Browser/API test | screenshots or test notes | login, upload public media, private object auth | Expected role-based access | Missing |
-| DAST | Live HTTPS domain | OWASP ZAP baseline | `zap-report.json`, `zap-report.html` | alerts by risk | No untriaged high risk | Missing |
-| Load test | Live `/api/health` and selected app paths | k6 | `k6-summary.json` | failure rate, p95 latency | Thresholds met and documented | Missing |
-| Monitoring evidence | Live AWS stack | AWS Console/CLI | CloudWatch/log screenshots or JSON | logs, metrics, alarms/dashboard, ECS events | Evidence captured and interpretable | Missing |
+| Runtime smoke | Live app domain | curl checks | `smoke-status.txt`, health/readiness JSON | HTTPS, HTTP redirect, health, readiness | Expected 200/redirect and JSON `status=ok` | Automation prepared; live evidence missing |
+| Functional checks | Isolated temporary users and ECS fixture task | Playwright | Playwright JSON/HTML, failure-only screenshots | login roles, public upload, private object authorization | All assertions pass and fixture cleanup passes | Automation prepared; live evidence missing |
+| DAST | Live HTTPS domain | Bounded ZAP Automation Framework | ZAP JSON/HTML and normalized summary | alerts by risk and unique rule | No untriaged high risk; medium reviewed | Automation prepared; live evidence missing |
+| Load test | Public read-only endpoints | k6 smoke plus staged 10/25/50 VU, three trials | trial summary JSON | errors, checks, p50/p95/p99, throughput | Error `<1%`, checks `>99%`, p95 `<1000ms` | Automation prepared; live evidence missing |
+| Monitoring evidence | Bounded runtime test window | AWS CLI/CloudWatch collector | normalized metric series and AWS snapshots | ALB, ECS, ASG, RDS, WAF, logs | Window and resource provenance match experiment | Automation prepared; live evidence missing |
+| Canonical aggregation | All artifacts with one experiment ID | Evidence aggregator and JSON Schema validator | `experiment-evidence.json`, manifest | workflow provenance, completeness, cleanup, three trials, CloudWatch core series, checksum | Status `final`; no stale, failed, partial, or missing required stage | Local schema/unit validation passed; live evidence missing |
 | Destroy | Evidence already captured | Terraform workflow `action=destroy` | `post-destroy-verification` | state empty, costly resources gone | PASS and no costly leftovers | Valid run `28767137374` |
 
 ## Deferred Items Not For BAB 4 Claims

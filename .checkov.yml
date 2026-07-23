@@ -2,6 +2,9 @@ compact: true
 quiet: true
 download-external-modules: false
 skip-check:
+  # Manual workflows require reviewed immutable IDs; each input is validated
+  # before it can influence plan, apply, or experiment evidence.
+  - CKV_GHA_7
   # Conditional HTTP resources are disabled or redirect-only when production HTTPS is enabled.
   - CKV_AWS_2
   - CKV_AWS_103

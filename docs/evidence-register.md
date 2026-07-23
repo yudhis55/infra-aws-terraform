@@ -8,6 +8,8 @@ belum ditinjau.
 ## Current Infrastructure State
 
 - Workload AWS utama sudah di-destroy untuk hemat biaya.
+- ECR bootstrap telah dibuat ulang untuk menerima image remediation. Full
+  workload tetap belum di-apply.
 - Terraform remote backend tetap dipertahankan: S3 state bucket
   `eepistore-dev-terraform-state`, native lockfile, dan KMS key backend.
 - Domain dan hosted zone Route53 tetap dipertahankan.
@@ -25,15 +27,18 @@ belum ditinjau.
 
 | Area | Evidence | Source | Status | BAB 4 Usage |
 | --- | --- | --- | --- | --- |
+| App image publish pre-automation | Image digest `sha256:46834d635ef90087683aa1fb1d29899fd68c1f0a77270fd88c05f8724bb9c2db` untuk app commit `9aed6d5cbbe94177908f1c032e79a7b412b12808` | GitHub Actions app run `29983090390`, artifact `published-image` dan provenance attestation | Stale for final experiment | Bukti baseline immutable; utility eksperimen mengubah source app sehingga publish ulang wajib |
+| Terraform plan pre-automation | Plan `139 add, 0 change, 0 destroy` untuk infra commit `cbd1a51a0adeefa86d48715937d67218658b83d0` | GitHub Actions infra run `29983467498`, artifact `terraform-plan-review` | Stale for final experiment | Bukti baseline plan; workflow, output, policy, dan collector berubah sehingga plan ulang wajib |
+| Experiment automation local validation | Playwright role test, bounded ZAP plan, tiga trial k6, CloudWatch collector, schema validator, cleanup gate, dan dashboard parser | Local validation pada branch `experiment/evidence-automation-20260723` | Draft | Menjadi evidence final hanya setelah CI, image publish, plan, controlled apply, dan live experiment selesai |
 | App remediation CI | Quality, CodeQL, npm audit, Docker build, SBOM, dan Trivy container scan untuk commit `f94ad65` | GitHub Actions app run `29981599919`, PR `yudhis55/eepistore#1` | Valid CI evidence | Bukti gate source remediation; belum menjadi bukti image publish/deployment |
 | IaC remediation CI | fmt, validate, TFLint, Trivy IaC, dan Checkov untuk commit `84eacb5` | GitHub Actions infra run `29981610767`, PR `yudhis55/infra-aws-terraform#1` | Valid CI evidence | Bukti source IaC lulus gate; plan/apply memang tidak dijalankan pada PR |
-| App image publish | Image `557947229844.dkr.ecr.ap-southeast-3.amazonaws.com/eepistore-repo:18fb24f6d419722841f587cbf4355aa2419c2dbf` | GitHub Actions app run `28765082346`, artifact `published-image` | Stale | Hanya bukti baseline lama; source aplikasi sudah berubah pada remediation 2026-07-23 |
+| App image publish | Image `557947229844.dkr.ecr.ap-southeast-3.amazonaws.com/eepistore-repo:18fb24f6d419722841f587cbf4355aa2419c2dbf` | GitHub Actions app run `28765082346`, artifact `published-image` | Stale | Hanya bukti baseline lama; telah digantikan candidate digest `sha256:46834d...` |
 | App image publish lama | Image tag `1496d689d5bd7d304995fdde7ab2feacdeb15003` | GitHub Actions app run `28748288932` | Stale | Jangan dipakai sebagai image final karena sudah digantikan `18fb24f...` |
 | Terraform apply | Controlled apply dengan strict readiness | GitHub Actions infra run `28765301534`, artifact `terraform-plan` dan `post-apply-verification` | Valid baseline | Boleh dipakai sebagai bukti bahwa desain pernah berhasil, tetapi eksperimen BAB 4 final sebaiknya mengambil paket evidence lengkap ulang |
 | Post-apply verification | Drift, VPC, ALB, ECS, RDS, RDS Proxy, S3, CloudFront, WAF, health, readiness semuanya PASS | GitHub Actions infra run `28765301534` | Valid baseline | Boleh dikutip sebagai baseline teknis, dengan catatan stack sudah di-destroy |
 | Terraform destroy | Destroy plan `0 add, 0 change, 78 destroy` lalu state kosong | GitHub Actions infra run `28767137374`, artifact `post-destroy-verification` | Valid | Boleh dipakai sebagai bukti teardown hemat biaya dan operasional IaC |
 | Post-destroy AWS spot check | VPC/NAT kosong, ECS inactive, ALB/RDS/RDS Proxy/ECR not found, workload S3 hilang, secret kosong, snapshot hilang | AWS CLI read-only check pada `2026-07-06` | Valid operational note | Boleh dipakai sebagai catatan operasional, bukan pengganti artifact workflow final |
-| Remediation validation | Format, lint, typecheck, 15 unit tests, Next production build, npm audit, Docker build, dan read-only container smoke | Local validation pada `2026-07-23` | Draft | Harus diulang di GitHub Actions setelah branch dipush |
+| Remediation validation | Format, lint, typecheck, 15 unit tests, Next production build, Docker build, dan fixture validation pada read-only container | Local validation pada `2026-07-23` | Draft | Harus diulang di GitHub Actions setelah branch dipush |
 | IaC remediation validation | Terraform init/validate, TFLint, Trivy `0` finding, Checkov `255 passed / 0 failed` | Local validation pada `2026-07-23` | Draft | Harus diulang di GitHub Actions sebelum plan |
 | GitHub OIDC hardening | App role ECR-only, plan role read-only + backend, apply role PowerUser + project IAM | AWS IAM policy simulator pada `2026-07-23` | Valid operational note | Bukti hardening akses pipeline; workflow tetap perlu menguji permission aktual |
 | Scanner triage | Fixed, accepted, dan deferred scanner findings | `docs/scan-triage.md` | Valid | Boleh dipakai untuk menjelaskan batasan klaim keamanan |
@@ -55,3 +60,11 @@ belum ditinjau.
 8. CloudWatch evidence for application logs, target health, ECS service events,
    RDS/RDS Proxy state, WAF association, and alarms/dashboard.
 9. Final destroy verification after evidence is safely captured.
+
+## Canonical Experiment Package
+
+Workflow `Final Experiment Evidence` menghasilkan satu
+`experiment-evidence.json` dengan schema `1.0.0`. Paket berstatus `final` hanya
+apabila provenance app/infra/image sama, post-apply verification tersedia,
+functional/ZAP/k6/CloudWatch lengkap, dan cleanup fixture berhasil. Dashboard
+lokal tidak boleh mengganti status atau nilai paket tersebut.
