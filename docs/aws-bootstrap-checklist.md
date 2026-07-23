@@ -4,6 +4,11 @@ Gunakan checklist ini setelah ACM certificate untuk `eepistore.web.id` sudah
 berstatus `Issued`. Jangan jalankan `apply` production sebelum semua nilai
 placeholder diganti dengan nilai asli.
 
+Catatan status pasca-destroy: remote backend tetap ada, tetapi workload
+resource seperti ECR, ECS, RDS, ALB, S3 upload, dan CloudFront sudah dihapus.
+Jika butuh image baru, buat ECR terlebih dahulu sebelum menjalankan workflow app
+`publish-image`.
+
 ## 1. Domain dan Certificate
 
 - [ ] Route 53 public hosted zone untuk `eepistore.web.id` sudah ada.
@@ -17,7 +22,7 @@ placeholder diganti dengan nilai asli.
 - [ ] OIDC provider `https://token.actions.githubusercontent.com` tersedia di IAM.
 - [ ] Role infra plan dibuat untuk repo `infra-aws-terraform`.
 - [ ] Role infra apply dibuat untuk environment `production`.
-- [ ] Role app deploy dibuat untuk repo `eepistore` environment `production`.
+- [ ] Role app publish dibuat untuk repo `eepistore` environment `production`.
 - [ ] GitHub environment `production` memakai required reviewer.
 - [ ] Branch deployment dibatasi ke branch utama (`main` atau `master`).
 
@@ -38,34 +43,33 @@ Infra repository secrets:
 
 - [ ] `AWS_PLAN_ROLE_ARN=<arn-role-plan>`
 - [ ] `AWS_APPLY_ROLE_ARN=<arn-role-apply>`
-- [ ] `TF_VAR_DB_PASSWORD=<password-kuat>`
-- [ ] `TF_VAR_AUTH_SECRET=<secret-random-panjang>`
-- [ ] `TF_VAR_SMTP_USER=<smtp-user-atau-kosong>`
-- [ ] `TF_VAR_SMTP_PASS=<smtp-pass-atau-kosong>`
+
+Password master RDS dan `AUTH_SECRET` dibuat oleh Terraform lalu disimpan di
+Secrets Manager. Nilai tersebut tidak disimpan sebagai GitHub secret.
 
 App repository variables:
 
 - [ ] `AWS_REGION=ap-southeast-3`
-- [ ] `ECR_REPOSITORY=eepistore`
-- [ ] `ECS_CLUSTER=<output-terraform>`
-- [ ] `ECS_SERVICE=<output-terraform>`
+- [ ] `ECR_REPOSITORY=eepistore-repo`
 - [ ] `APP_URL=https://eepistore.web.id`
 
 App repository secrets:
 
-- [ ] `AWS_DEPLOY_ROLE_ARN=<arn-role-deploy>`
+- [ ] `AWS_DEPLOY_ROLE_ARN=<arn-role-publish-image>`
 
 ## 4. Remote State Bootstrap
 
 - [ ] Jalankan bootstrap `bootstrap/state-backend`.
-- [ ] Catat output bucket S3, DynamoDB lock table, dan KMS key.
+- [ ] Catat output bucket S3 dan KMS key.
 - [ ] Salin nilai output ke backend configuration environment utama.
 - [ ] Jalankan migrasi state ke remote backend.
+- [ ] Pastikan backend memakai `use_lockfile = true`.
 - [ ] Pastikan Terraform state tidak tersimpan di Git.
 
 ## 5. ECR dan Image Aplikasi
 
-- [ ] ECR repository tersedia.
+- [ ] ECR repository tersedia. Setelah destroy, buat ulang lewat Terraform tahap
+      awal/target terbatas sebelum publish image baru.
 - [ ] Build aplikasi lulus secara lokal dan/atau GitHub Actions.
 - [ ] Push image dengan tag commit SHA, bukan `latest`.
 - [ ] Isi `TF_VAR_APP_IMAGE_URI` memakai URI image immutable.
@@ -89,10 +93,11 @@ App repository secrets:
 - [ ] Simpan artifact Terraform plan, apply log, dan post-apply verification.
 - [ ] Jika verification menemukan mismatch, jangan lanjut BAB 4 sebelum gap dicatat.
 
-## 8. Deploy dan Evidence
+## 8. Migration, Runtime, dan Evidence
 
-- [ ] Isi output Terraform ke vars app repository (`ECS_CLUSTER`, `ECS_SERVICE`, `APP_URL`).
-- [ ] Jalankan app pipeline dari branch utama.
+- [ ] Pastikan workflow app hanya memublikasikan image digest dan tidak mengubah ECS.
+- [ ] Pastikan Terraform menjadi satu-satunya pemilik task definition dan ECS service.
 - [ ] Pastikan migration task selesai dengan exit code `0`.
 - [ ] Pastikan ECS service stable.
-- [ ] Simpan artifact deploy, ZAP, k6, health, dan readiness.
+- [ ] Jalankan workflow runtime evidence setelah stack aktif.
+- [ ] Simpan artifact ZAP, k6, health, readiness, dan verifikasi AWS.

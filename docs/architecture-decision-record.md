@@ -41,7 +41,7 @@ static AWS access key, atau bucket S3 publik langsung.
 
 ## Konsekuensi Implementasi
 
-- Terraform harus memiliki remote backend S3, DynamoDB locking, dan KMS.
+- Terraform harus memiliki remote backend S3 dengan native lockfile dan KMS.
 - ALB harus memakai ACM certificate valid melalui DNS validation.
 - ECS deploy harus memakai immutable image tag berbasis commit SHA dan
   Terraform menerima image final melalui variable `app_image_uri`, bukan

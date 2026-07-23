@@ -48,6 +48,15 @@ implemented evidence in BAB 4.
   lifecycle rules for noncurrent versions and incomplete multipart uploads.
 - KMS key policy presence: Terraform state and RDS KMS keys define explicit
   account-administration key policies.
+- Public/private storage boundary: public media and sensitive documents use
+  separate private buckets. Only the media bucket is connected to CloudFront
+  OAC.
+- ECR customer-managed encryption: the repository uses a dedicated rotating KMS
+  key and immutable tags.
+- Secret ownership: Terraform generates the Auth.js secret and RDS manages its
+  master credential in Secrets Manager. GitHub no longer supplies either value.
+- Terraform state locking: the backend uses S3 native lockfiles; new bootstrap
+  deployments no longer create a DynamoDB lock table.
 
 ## Accepted Scanner Context
 
@@ -70,9 +79,6 @@ implemented evidence in BAB 4.
   non-HTTPS listener in `modules/ecs/asg.tf` is only created when HTTPS is
   disabled; production sets HTTPS enabled and creates the TLS listener plus
   HTTP redirect.
-- ECR customer-managed KMS key: accepted for the existing repository baseline.
-  Switching encryption can require replacing or recreating the repository, so
-  it is not changed before first apply.
 - S3 bucket event notifications: accepted. Terraform state, ALB log, and media
   buckets do not require event notifications for the thesis baseline.
 
@@ -95,10 +101,10 @@ implemented evidence in BAB 4.
   DNSSEC operations.
 - S3 cross-region replication: deferred. The target architecture is
   single-region production-like, not multi-region disaster recovery.
-- S3 access logging and customer-managed KMS for every bucket: deferred. Buckets
-  are private, encrypted, versioned where relevant, and protected by public
-  access block; full logging/KMS-per-bucket hardening can be added after the
-  first controlled deployment.
+- S3 access logging and customer-managed KMS for every workload bucket:
+  deferred. Buckets are private, encrypted, versioned, and protected by public
+  access block; full logging/KMS-per-bucket hardening is outside the current
+  evidence baseline.
 - CloudWatch Logs customer-managed KMS: deferred. Log groups now retain evidence
   for 365 days, but per-log-group CMK policies for CloudWatch Logs are deferred
   until after first deployment to avoid adding untested log-delivery key policy

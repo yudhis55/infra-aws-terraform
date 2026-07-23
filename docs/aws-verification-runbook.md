@@ -3,6 +3,10 @@
 Runbook ini dijalankan setelah `terraform apply` untuk memastikan kondisi AWS
 aktual sesuai Terraform state dan pedoman BAB 3.
 
+Untuk alur plan, approval apply, dan destroy hemat biaya, gunakan
+`docs/operations-runbook.md`. Dokumen ini fokus pada verifikasi setelah stack
+berhasil dibuat.
+
 ## Prasyarat
 
 - AWS credentials tersedia melalui GitHub OIDC atau profile lokal yang sah.
@@ -85,3 +89,11 @@ aktual sesuai Terraform state dan pedoman BAB 3.
 
 Verifikasi dinyatakan lulus jika semua komponen sesuai pedoman, tidak ada drift,
 semua target healthy, HTTPS aktif, dan evidence tersimpan sebagai artifact.
+
+## Status Evidence Saat Ini
+
+- Controlled apply run `28765301534` pernah lulus dengan strict readiness JSON.
+- Controlled destroy run `28767137374` sudah menghapus stack untuk hemat biaya.
+- Evidence baseline tersebut valid sebagai bukti desain pernah berjalan, tetapi
+  paket eksperimen BAB 4 final masih perlu melengkapi DAST, load test,
+  functional smoke, dan monitoring evidence.

@@ -8,58 +8,57 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "Terraform action"
+        description: Terraform action
         required: true
-        default: "plan"
+        default: plan
         type: choice
-        options:
-          - plan
-          - apply
-          - destroy
+        options: [plan, apply, destroy]
 
 permissions:
   contents: read
-  security-events: write
-  id-token: write
+
+concurrency:
+  group: terraform-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 env:
   TF_IN_AUTOMATION: "true"
   TF_INPUT: "false"
   TF_WORKING_DIR: env/dev
+  TF_VERSION: "1.14.4"
+  TFLINT_VERSION: "v0.59.1"
 
 jobs:
   validate-and-scan:
-    name: Format, Validate, IaC Scan
+    name: Validate and IaC Security Gates
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Setup TFLint
-        uses: terraform-linters/setup-tflint@v4
-
-      - name: Terraform format check
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: terraform-linters/setup-tflint@90f302c255ef959cbfb4bd10581afecdb7ece3e6 # v4
+        with:
+          tflint_version: ${{ env.TFLINT_VERSION }}
+      - name: Terraform format
         run: terraform fmt -check -recursive
-
       - name: TFLint
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           tflint --init
-          tflint -f compact
-
-      - name: Terraform init without remote backend
+          tflint --format compact
+      - name: Terraform init without backend
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform init -backend=false
-
       - name: Terraform validate
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform validate
-
-      - name: Trivy IaC scan
-        continue-on-error: true
-        uses: aquasecurity/trivy-action@master
+      - name: Trivy IaC gate
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
         with:
           scan-type: config
           scan-ref: .
@@ -67,86 +66,81 @@ jobs:
           output: trivy-iac.sarif
           severity: CRITICAL,HIGH
           exit-code: "1"
-
-      - name: Checkov IaC scan
+          skip-dirs: "**/.terraform"
+          trivyignores: .trivyignore.yaml
+      - name: Checkov IaC gate
         if: always()
-        uses: bridgecrewio/checkov-action@master
+        uses: bridgecrewio/checkov-action@7b972723c44fb3d256283fac96fae5d7c1894bb7 # v12
         with:
           directory: .
           framework: terraform
+          config_file: .checkov.yml
           output_format: sarif
           output_file_path: checkov.sarif
-          soft_fail: true
-
-      - name: Upload IaC scan SARIF
+          soft_fail: false
+      - name: Upload Trivy SARIF
         if: always() && hashFiles('trivy-iac.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@4187e74d05793876e9989daffde9c3e66b4acd07 # v3
         with:
           sarif_file: trivy-iac.sarif
-
+          category: terraform-trivy
       - name: Upload Checkov SARIF
         if: always() && hashFiles('checkov.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@4187e74d05793876e9989daffde9c3e66b4acd07 # v3
         with:
           sarif_file: checkov.sarif
-
-      - name: Upload Terraform CI evidence
+          category: terraform-checkov
+      - name: Upload scan evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: terraform-ci-evidence
+          name: terraform-security-evidence
           path: |
             trivy-iac.sarif
             checkov.sarif
-          if-no-files-found: ignore
+          retention-days: 30
 
   plan:
     name: Terraform Plan
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [validate-and-scan]
     if: >-
       github.event_name == 'workflow_dispatch' &&
-      (inputs.action == 'plan' || inputs.action == 'apply' || inputs.action == 'destroy') &&
       vars.AWS_REGION != '' &&
       vars.TF_VAR_PROJECT_NAME != '' &&
       vars.TF_VAR_APP_IMAGE_URI != ''
+    permissions:
+      contents: read
+      id-token: write
     env:
       TF_VAR_project_name: ${{ vars.TF_VAR_PROJECT_NAME }}
-      TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
       TF_VAR_app_image_uri: ${{ vars.TF_VAR_APP_IMAGE_URI }}
       TF_VAR_domain_name: ${{ vars.TF_VAR_DOMAIN_NAME }}
       TF_VAR_route53_zone_id: ${{ vars.TF_VAR_ROUTE53_ZONE_ID }}
       TF_VAR_enable_https: ${{ vars.TF_VAR_ENABLE_HTTPS }}
       TF_VAR_acm_certificate_arn: ${{ vars.TF_VAR_ACM_CERTIFICATE_ARN }}
       TF_VAR_app_base_url: ${{ vars.TF_VAR_APP_BASE_URL }}
-      TF_VAR_auth_secret: ${{ secrets.TF_VAR_AUTH_SECRET }}
-      TF_VAR_smtp_user: ${{ secrets.TF_VAR_SMTP_USER }}
-      TF_VAR_smtp_pass: ${{ secrets.TF_VAR_SMTP_PASS }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
           role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
       - name: Terraform init
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform init
-
-      - name: Configure destroy cost-saving overrides
+      - name: Configure controlled destroy overrides
         if: inputs.action == 'destroy'
         run: |
           echo "TF_VAR_enable_deletion_protection=false" >> "$GITHUB_ENV"
           echo "TF_VAR_skip_final_snapshot=true" >> "$GITHUB_ENV"
           echo "TF_VAR_force_destroy=true" >> "$GITHUB_ENV"
           echo "TF_VAR_ecr_force_delete=true" >> "$GITHUB_ENV"
-
-      - name: Terraform plan
+      - name: Create saved plan
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           if [ "${{ inputs.action }}" = "destroy" ]; then
@@ -154,107 +148,108 @@ jobs:
           else
             terraform plan -out=tfplan
           fi
-
-      - name: Export human-readable plan
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform show -no-color tfplan > tfplan.txt
-
-      - name: Upload plan artifact
-        uses: actions/upload-artifact@v4
+          terraform show -no-color tfplan > tfplan.txt
+          terraform show -json tfplan > tfplan.json
+          jq '{
+            create: [.resource_changes[]? | select(.change.actions == ["create"])] | length,
+            update: [.resource_changes[]? | select(.change.actions == ["update"])] | length,
+            delete: [.resource_changes[]? | select(.change.actions == ["delete"])] | length,
+            replace: [.resource_changes[]? | select(.change.actions == ["delete", "create"] or .change.actions == ["create", "delete"])] | length
+          }' tfplan.json > tfplan-summary.json
+      - name: Upload reviewable plan
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: terraform-plan
+          name: terraform-plan-review
           path: |
-            ${{ env.TF_WORKING_DIR }}/tfplan
             ${{ env.TF_WORKING_DIR }}/tfplan.txt
+            ${{ env.TF_WORKING_DIR }}/tfplan-summary.json
+          retention-days: 30
+      - name: Upload short-lived binary plan
+        if: inputs.action == 'apply' || inputs.action == 'destroy'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: terraform-saved-plan
+          path: ${{ env.TF_WORKING_DIR }}/tfplan
+          retention-days: 1
 
   apply:
-    name: Terraform Apply + Verify
+    name: Controlled Apply or Destroy
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     needs: [plan]
     if: >-
       github.event_name == 'workflow_dispatch' &&
-      (inputs.action == 'apply' || inputs.action == 'destroy') &&
-      vars.AWS_REGION != '' &&
-      vars.TF_VAR_PROJECT_NAME != '' &&
-      vars.TF_VAR_APP_IMAGE_URI != ''
+      github.ref == 'refs/heads/main' &&
+      (inputs.action == 'apply' || inputs.action == 'destroy')
     environment: production
+    permissions:
+      contents: read
+      id-token: write
     env:
       TF_VAR_project_name: ${{ vars.TF_VAR_PROJECT_NAME }}
-      TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
       TF_VAR_app_image_uri: ${{ vars.TF_VAR_APP_IMAGE_URI }}
       TF_VAR_domain_name: ${{ vars.TF_VAR_DOMAIN_NAME }}
       TF_VAR_route53_zone_id: ${{ vars.TF_VAR_ROUTE53_ZONE_ID }}
       TF_VAR_enable_https: ${{ vars.TF_VAR_ENABLE_HTTPS }}
       TF_VAR_acm_certificate_arn: ${{ vars.TF_VAR_ACM_CERTIFICATE_ARN }}
       TF_VAR_app_base_url: ${{ vars.TF_VAR_APP_BASE_URL }}
-      TF_VAR_auth_secret: ${{ secrets.TF_VAR_AUTH_SECRET }}
-      TF_VAR_smtp_user: ${{ secrets.TF_VAR_SMTP_USER }}
-      TF_VAR_smtp_pass: ${{ secrets.TF_VAR_SMTP_PASS }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
           role-to-assume: ${{ secrets.AWS_APPLY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
       - name: Terraform init
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform init
-
-      - name: Configure destroy cost-saving overrides
+      - name: Configure controlled destroy overrides
         if: inputs.action == 'destroy'
         run: |
           echo "TF_VAR_enable_deletion_protection=false" >> "$GITHUB_ENV"
           echo "TF_VAR_skip_final_snapshot=true" >> "$GITHUB_ENV"
           echo "TF_VAR_force_destroy=true" >> "$GITHUB_ENV"
           echo "TF_VAR_ecr_force_delete=true" >> "$GITHUB_ENV"
-
-      - name: Download reviewed plan artifact
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: terraform-plan
+          name: terraform-saved-plan
           path: ${{ env.TF_WORKING_DIR }}
-
-      - name: Terraform apply
+      - name: Apply reviewed plan
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform apply -auto-approve tfplan
-
+      - name: Run database migrations as one-off ECS task
+        if: inputs.action == 'apply'
+        run: bash scripts/run-ecs-migration.sh "${{ env.TF_WORKING_DIR }}" migration-evidence
       - name: Post-apply AWS verification
         if: inputs.action == 'apply'
         run: bash scripts/verify-aws-post-apply.sh "${{ env.TF_WORKING_DIR }}" verification-evidence
-
-      - name: Post-destroy Terraform state verification
+      - name: Verify empty state after destroy
         if: inputs.action == 'destroy'
         run: |
-          set -euo pipefail
           mkdir -p destroy-evidence
           terraform -chdir="${{ env.TF_WORKING_DIR }}" state list > destroy-evidence/state-list.txt
-
-          if [ -s destroy-evidence/state-list.txt ]; then
-            echo "Terraform state still contains resources after destroy:" >&2
-            cat destroy-evidence/state-list.txt >&2
-            exit 1
-          fi
-
+          test ! -s destroy-evidence/state-list.txt
           echo "PASS terraform-state-empty" > destroy-evidence/verification-status.txt
-
+      - name: Upload migration evidence
+        if: always() && inputs.action == 'apply'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: migration-evidence
+          path: migration-evidence
+          retention-days: 30
       - name: Upload post-apply evidence
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: always() && inputs.action == 'apply'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: post-apply-verification
           path: verification-evidence
-          if-no-files-found: ignore
-
+          retention-days: 30
       - name: Upload post-destroy evidence
         if: always() && inputs.action == 'destroy'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: post-destroy-verification
           path: destroy-evidence
-          if-no-files-found: ignore
+          retention-days: 30

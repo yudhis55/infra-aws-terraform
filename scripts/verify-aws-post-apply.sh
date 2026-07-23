@@ -25,6 +25,18 @@ capture() {
   fi
 }
 
+assert_json() {
+  local name="$1"
+  local file="$2"
+  local filter="$3"
+
+  if jq -e "$filter" "$file" > /dev/null 2> "$OUT_DIR/${name}.err"; then
+    log_status "PASS ${name}"
+  else
+    log_status "FAIL ${name}; assertion '${filter}' did not match"
+  fi
+}
+
 verify_json_endpoint() {
   local name="$1"
   local url="$2"
@@ -95,8 +107,10 @@ service_name="$(read_output ecs_service_name)"
 asg_name="$(read_output asg_name)"
 rds_instance_id="$(read_output rds_instance_id)"
 rds_proxy_id="$(read_output rds_proxy_id)"
-s3_bucket_name="$(read_output s3_bucket_name)"
+s3_public_bucket_name="$(read_output s3_public_bucket_name)"
+s3_private_bucket_name="$(read_output s3_private_bucket_name)"
 cloudfront_distribution_id="$(read_output cloudfront_distribution_id)"
+cloudfront_media_url="$(read_output cloudfront_media_url)"
 waf_web_acl_arn="$(read_output waf_web_acl_arn)"
 application_url="$(read_output application_url)"
 
@@ -109,7 +123,8 @@ jq -n \
   --arg asg_name "$asg_name" \
   --arg rds_instance_id "$rds_instance_id" \
   --arg rds_proxy_id "$rds_proxy_id" \
-  --arg s3_bucket_name "$s3_bucket_name" \
+  --arg s3_public_bucket_name "$s3_public_bucket_name" \
+  --arg s3_private_bucket_name "$s3_private_bucket_name" \
   --arg cloudfront_distribution_id "$cloudfront_distribution_id" \
   --arg waf_web_acl_arn "$waf_web_acl_arn" \
   --arg application_url "$application_url" \
@@ -122,7 +137,8 @@ jq -n \
     asg_name: $asg_name,
     rds_instance_id: $rds_instance_id,
     rds_proxy_id: $rds_proxy_id,
-    s3_bucket_name: $s3_bucket_name,
+    s3_public_bucket_name: $s3_public_bucket_name,
+    s3_private_bucket_name: $s3_private_bucket_name,
     cloudfront_distribution_id: $cloudfront_distribution_id,
     waf_web_acl_arn: $waf_web_acl_arn,
     application_url: $application_url
@@ -137,10 +153,18 @@ fi
 if [ -n "$alb_arn" ]; then
   capture alb aws elbv2 describe-load-balancers --load-balancer-arns "$alb_arn"
   capture alb-listeners aws elbv2 describe-listeners --load-balancer-arn "$alb_arn"
+  assert_json alb-private-resource-shape "$OUT_DIR/alb.json" \
+    '(.LoadBalancers | length) == 1 and .LoadBalancers[0].Scheme == "internet-facing"'
+  assert_json alb-https-listener "$OUT_DIR/alb-listeners.json" \
+    '[.Listeners[] | select(.Port == 443 and .Protocol == "HTTPS")] | length == 1'
+  assert_json alb-http-redirect "$OUT_DIR/alb-listeners.json" \
+    '[.Listeners[] | select(.Port == 80) | .DefaultActions[] | select(.Type == "redirect" and .RedirectConfig.Protocol == "HTTPS")] | length == 1'
 fi
 
 if [ -n "$target_group_arn" ]; then
   capture target-health aws elbv2 describe-target-health --target-group-arn "$target_group_arn"
+  assert_json target-health-all-healthy "$OUT_DIR/target-health.json" \
+    '.TargetHealthDescriptions | length > 0 and all(.[]; .TargetHealth.State == "healthy")'
 fi
 
 if [ -n "$cluster_name" ] && [ -n "$service_name" ]; then
@@ -156,6 +180,15 @@ if [ -n "$cluster_name" ] && [ -n "$service_name" ]; then
   if [ -n "$task_arns" ]; then
     # shellcheck disable=SC2086
     capture ecs-tasks aws ecs describe-tasks --cluster "$cluster_name" --tasks $task_arns
+    task_definition_arn="$(jq -r '.tasks[0].taskDefinitionArn // empty' "$OUT_DIR/ecs-tasks.json")"
+    if [ -n "$task_definition_arn" ]; then
+      capture ecs-task-definition aws ecs describe-task-definition \
+        --task-definition "$task_definition_arn"
+      assert_json ecs-read-only-root "$OUT_DIR/ecs-task-definition.json" \
+        '.taskDefinition.containerDefinitions[] | select(.name == "app") | .readonlyRootFilesystem == true'
+      assert_json ecs-immutable-image "$OUT_DIR/ecs-task-definition.json" \
+        '.taskDefinition.containerDefinitions[] | select(.name == "app") | .image | test("@sha256:[0-9a-f]{64}$|:[0-9a-f]{40}$")'
+    fi
   else
     log_status "FAIL ecs-tasks: no running service tasks found"
   fi
@@ -167,20 +200,41 @@ fi
 
 if [ -n "$rds_instance_id" ]; then
   capture rds-instance aws rds describe-db-instances --db-instance-identifier "$rds_instance_id"
+  assert_json rds-private-multi-az "$OUT_DIR/rds-instance.json" \
+    '(.DBInstances | length) == 1 and .DBInstances[0].PubliclyAccessible == false and .DBInstances[0].MultiAZ == true and .DBInstances[0].StorageEncrypted == true'
 fi
 
 if [ -n "$rds_proxy_id" ]; then
   capture rds-proxy aws rds describe-db-proxies --db-proxy-name "$rds_proxy_id"
   capture rds-proxy-targets aws rds describe-db-proxy-targets --db-proxy-name "$rds_proxy_id"
+  assert_json rds-proxy-target-available "$OUT_DIR/rds-proxy-targets.json" \
+    '.Targets | length > 0 and all(.[]; .TargetHealth.State == "AVAILABLE")'
 fi
 
-if [ -n "$s3_bucket_name" ]; then
-  capture s3-public-access-block aws s3api get-public-access-block --bucket "$s3_bucket_name"
-  capture s3-encryption aws s3api get-bucket-encryption --bucket "$s3_bucket_name"
-fi
+for bucket_class in public private; do
+  bucket_variable="s3_${bucket_class}_bucket_name"
+  bucket_name="${!bucket_variable}"
+  if [ -n "$bucket_name" ]; then
+    capture "s3-${bucket_class}-public-access-block" aws s3api get-public-access-block \
+      --bucket "$bucket_name"
+    capture "s3-${bucket_class}-encryption" aws s3api get-bucket-encryption \
+      --bucket "$bucket_name"
+    capture "s3-${bucket_class}-cors" aws s3api get-bucket-cors --bucket "$bucket_name"
+    assert_json "s3-${bucket_class}-not-public" \
+      "$OUT_DIR/s3-${bucket_class}-public-access-block.json" \
+      '.PublicAccessBlockConfiguration | .BlockPublicAcls and .IgnorePublicAcls and .BlockPublicPolicy and .RestrictPublicBuckets'
+    assert_json "s3-${bucket_class}-cors-no-wildcard" \
+      "$OUT_DIR/s3-${bucket_class}-cors.json" \
+      '[.CORSRules[].AllowedOrigins[]] | all(. != "*")'
+  fi
+done
 
 if [ -n "$cloudfront_distribution_id" ]; then
   capture cloudfront-distribution aws cloudfront get-distribution --id "$cloudfront_distribution_id"
+  media_hostname="${cloudfront_media_url#https://}"
+  media_hostname="${media_hostname%%/*}"
+  assert_json cloudfront-oac-and-alias "$OUT_DIR/cloudfront-distribution.json" \
+    ".Distribution.DistributionConfig | (.Aliases.Items | index(\"$media_hostname\")) != null and (.Origins.Items | all(.OriginAccessControlId != \"\"))"
 fi
 
 if [ -n "$waf_web_acl_arn" ] && [ "$waf_web_acl_arn" != "null" ]; then
@@ -188,8 +242,14 @@ if [ -n "$waf_web_acl_arn" ] && [ "$waf_web_acl_arn" != "null" ]; then
   waf_id="$(echo "$waf_web_acl_arn" | awk -F'/' '{print $NF}')"
   if [ -n "$waf_name" ] && [ -n "$waf_id" ]; then
     capture waf-web-acl aws wafv2 get-web-acl --scope REGIONAL --name "$waf_name" --id "$waf_id"
+    capture waf-alb-association aws wafv2 get-web-acl-for-resource --resource-arn "$alb_arn"
+    assert_json waf-attached-to-alb "$OUT_DIR/waf-alb-association.json" \
+      '.WebACL.ARN != null'
   fi
 fi
+
+capture cloudwatch-alarms aws cloudwatch describe-alarms \
+  --alarm-name-prefix "${cluster_name%-cluster}"
 
 if [ -n "$alb_dns_name" ]; then
   echo "$alb_dns_name" > "$OUT_DIR/alb-dns-name.txt"
