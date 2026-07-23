@@ -60,6 +60,10 @@ implemented evidence in BAB 4.
 
 ## Accepted Scanner Context
 
+- GitHub Actions `workflow_dispatch` inputs (`CKV_GHA_7`): accepted. Controlled
+  Terraform actions and the final experiment require explicit reviewed action,
+  commit SHA, image digest, and run IDs. Inputs are allowlisted, format
+  validated, and checked against GitHub/ECR provenance before use.
 - ALB public exposure: accepted. The application entry point is intentionally a
   public ALB. ECS tasks and RDS remain private.
 - ALB HTTP listener and port 80 ingress: accepted. With HTTPS enabled, port 80

@@ -4,6 +4,27 @@ set -euo pipefail
 tf_dir="${1:-env/dev}"
 out_dir="${2:-migration-evidence}"
 mkdir -p "$out_dir"
+mkdir -p "$out_dir/timing"
+started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+started_epoch="$(date +%s)"
+
+write_timing() {
+  local exit_code="$?"
+  local ended_at
+  local ended_epoch
+  local status="passed"
+  ended_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  ended_epoch="$(date +%s)"
+  if [ "$exit_code" -ne 0 ]; then status="failed"; fi
+  jq -n \
+    --arg status "$status" \
+    --arg startedAt "$started_at" \
+    --arg endedAt "$ended_at" \
+    --argjson durationSeconds "$((ended_epoch - started_epoch))" \
+    '{status:$status, startedAt:$startedAt, endedAt:$endedAt, durationSeconds:$durationSeconds}' \
+    > "$out_dir/timing/migration-timing.json"
+}
+trap write_timing EXIT
 
 cluster="$(terraform -chdir="$tf_dir" output -raw ecs_cluster_name)"
 service="$(terraform -chdir="$tf_dir" output -raw ecs_service_name)"

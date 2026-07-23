@@ -15,6 +15,10 @@ permission miliknya sendiri.
 - `eepistore-infra-apply-role`: memakai AWS managed `PowerUserAccess` dan inline
   policy `apply-iam-policy.json` untuk IAM resource project yang tidak dicakup
   PowerUserAccess.
+- `eepistore-infra-experiment-role`: memakai trust policy environment
+  `production` dan inline `experiment-evidence-policy.json`. Role ini hanya
+  menjalankan one-off fixture task, membaca telemetry runtime, serta membersihkan
+  object pada kelas prefix eksperimen.
 
 Tidak ada role GitHub yang boleh memakai `AdministratorAccess`.
 
@@ -25,6 +29,8 @@ Tidak ada role GitHub yang boleh memakai `AdministratorAccess`.
 - Infra plan hanya dapat diasumsikan dari branch `main` repo
   `yudhis55/infra-aws-terraform`.
 - Infra apply hanya dapat diasumsikan oleh environment `production` repo
+  `yudhis55/infra-aws-terraform`.
+- Infra experiment hanya dapat diasumsikan oleh environment `production` repo
   `yudhis55/infra-aws-terraform`.
 
 Environment `production` dan branch `main` harus tetap dilindungi di GitHub.
@@ -39,3 +45,6 @@ Setelah perubahan policy, gunakan IAM policy simulator dan workflow plan untuk
 memastikan permission cukup. Jangan memulihkan `AdministratorAccess` hanya
 karena satu action kurang; tambahkan action minimum yang dibuktikan oleh log
 `AccessDenied`.
+
+Simpan ARN role experiment sebagai secret repository
+`AWS_EXPERIMENT_ROLE_ARN`. Role ini tidak memiliki izin Terraform apply.

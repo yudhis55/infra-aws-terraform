@@ -57,6 +57,17 @@ jobs:
       - name: Terraform validate
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform validate
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: tools/evidence/package-lock.json
+      - name: Validate experiment automation
+        run: |
+          bash -n scripts/*.sh
+          jq empty bootstrap/github-oidc/*.json
+          npm ci --prefix tools/evidence
+          npm test --prefix tools/evidence
       - name: Trivy IaC gate
         run: |
           docker run --rm \
@@ -69,6 +80,9 @@ jobs:
             --exit-code 1 \
             --ignorefile /src/.trivyignore.yaml \
             --skip-dirs /src/env/dev/.terraform \
+            --skip-files '**/tfplan*' \
+            --skip-files '**/*_plan.*' \
+            --skip-files '**/plan.txt' \
             /src
       - name: Checkov IaC gate
         if: always()
@@ -138,13 +152,17 @@ jobs:
       - name: Configure controlled destroy overrides
         if: inputs.action == 'destroy'
         run: |
-          echo "TF_VAR_enable_deletion_protection=false" >> "$GITHUB_ENV"
-          echo "TF_VAR_skip_final_snapshot=true" >> "$GITHUB_ENV"
-          echo "TF_VAR_force_destroy=true" >> "$GITHUB_ENV"
-          echo "TF_VAR_ecr_force_delete=true" >> "$GITHUB_ENV"
+          {
+            echo "TF_VAR_enable_deletion_protection=false"
+            echo "TF_VAR_skip_final_snapshot=true"
+            echo "TF_VAR_force_destroy=true"
+            echo "TF_VAR_ecr_force_delete=true"
+          } >> "$GITHUB_ENV"
       - name: Create saved plan
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
+          PLAN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          PLAN_STARTED_EPOCH="$(date +%s)"
           if [ "${{ inputs.action }}" = "destroy" ]; then
             terraform plan -destroy -out=tfplan
           elif [ "${{ inputs.action }}" = "bootstrap-ecr" ]; then
@@ -160,6 +178,14 @@ jobs:
             delete: [.resource_changes[]? | select(.change.actions == ["delete"])] | length,
             replace: [.resource_changes[]? | select(.change.actions == ["delete", "create"] or .change.actions == ["create", "delete"])] | length
           }' tfplan.json > tfplan-summary.json
+          PLAN_ENDED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          PLAN_ENDED_EPOCH="$(date +%s)"
+          jq -n \
+            --arg startedAt "$PLAN_STARTED_AT" \
+            --arg endedAt "$PLAN_ENDED_AT" \
+            --argjson durationSeconds "$((PLAN_ENDED_EPOCH - PLAN_STARTED_EPOCH))" \
+            '{status:"passed", startedAt:$startedAt, endedAt:$endedAt, durationSeconds:$durationSeconds}' \
+            > plan-timing.json
       - name: Upload reviewable plan
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -167,13 +193,16 @@ jobs:
           path: |
             ${{ env.TF_WORKING_DIR }}/tfplan.txt
             ${{ env.TF_WORKING_DIR }}/tfplan-summary.json
+            ${{ env.TF_WORKING_DIR }}/plan-timing.json
           retention-days: 30
       - name: Upload short-lived binary plan
         if: inputs.action == 'bootstrap-ecr' || inputs.action == 'apply' || inputs.action == 'destroy'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: terraform-saved-plan
-          path: ${{ env.TF_WORKING_DIR }}/tfplan
+          path: |
+            ${{ env.TF_WORKING_DIR }}/tfplan
+            ${{ env.TF_WORKING_DIR }}/plan-timing.json
           retention-days: 1
 
   apply:
@@ -212,17 +241,39 @@ jobs:
       - name: Configure controlled destroy overrides
         if: inputs.action == 'destroy'
         run: |
-          echo "TF_VAR_enable_deletion_protection=false" >> "$GITHUB_ENV"
-          echo "TF_VAR_skip_final_snapshot=true" >> "$GITHUB_ENV"
-          echo "TF_VAR_force_destroy=true" >> "$GITHUB_ENV"
-          echo "TF_VAR_ecr_force_delete=true" >> "$GITHUB_ENV"
+          {
+            echo "TF_VAR_enable_deletion_protection=false"
+            echo "TF_VAR_skip_final_snapshot=true"
+            echo "TF_VAR_force_destroy=true"
+            echo "TF_VAR_ecr_force_delete=true"
+          } >> "$GITHUB_ENV"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: terraform-saved-plan
           path: ${{ env.TF_WORKING_DIR }}
       - name: Apply reviewed plan
         working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform apply -auto-approve tfplan
+        run: |
+          mkdir -p ../../verification-evidence/timing
+          cp plan-timing.json ../../verification-evidence/timing/plan-timing.json
+          STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          STARTED_EPOCH="$(date +%s)"
+          set +e
+          terraform apply -auto-approve tfplan
+          EXIT_CODE=$?
+          set -e
+          ENDED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          ENDED_EPOCH="$(date +%s)"
+          STATUS="passed"
+          if [ "$EXIT_CODE" -ne 0 ]; then STATUS="failed"; fi
+          jq -n \
+            --arg status "$STATUS" \
+            --arg startedAt "$STARTED_AT" \
+            --arg endedAt "$ENDED_AT" \
+            --argjson durationSeconds "$((ENDED_EPOCH - STARTED_EPOCH))" \
+            '{status:$status, startedAt:$startedAt, endedAt:$endedAt, durationSeconds:$durationSeconds}' \
+            > ../../verification-evidence/timing/apply-timing.json
+          exit "$EXIT_CODE"
       - name: Verify ECR bootstrap
         if: inputs.action == 'bootstrap-ecr'
         run: |
@@ -246,6 +297,13 @@ jobs:
           terraform -chdir="${{ env.TF_WORKING_DIR }}" state list > destroy-evidence/state-list.txt
           test ! -s destroy-evidence/state-list.txt
           echo "PASS terraform-state-empty" > destroy-evidence/verification-status.txt
+      - name: Consolidate apply timing evidence
+        if: always() && inputs.action == 'apply'
+        run: |
+          mkdir -p verification-evidence/timing
+          if [ -f migration-evidence/timing/migration-timing.json ]; then
+            cp migration-evidence/timing/migration-timing.json verification-evidence/timing/
+          fi
       - name: Upload migration evidence
         if: always() && inputs.action == 'apply'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

@@ -8,9 +8,19 @@ output "alb_arn" {
   value       = module.ecs.alb_arn
 }
 
+output "alb_arn_suffix" {
+  description = "ALB ARN suffix used by CloudWatch metric dimensions"
+  value       = module.ecs.alb_arn_suffix
+}
+
 output "target_group_arn" {
   description = "ECS target group ARN"
   value       = module.ecs.target_group_arn
+}
+
+output "target_group_arn_suffix" {
+  description = "Target group ARN suffix used by CloudWatch metric dimensions"
+  value       = module.ecs.target_group_arn_suffix
 }
 
 output "application_url" {
@@ -31,6 +41,11 @@ output "ecs_cluster_name" {
 output "ecs_service_name" {
   description = "ECS service name"
   value       = module.ecs.ecs_service_name
+}
+
+output "ecs_log_group_name" {
+  description = "CloudWatch log group receiving application container logs"
+  value       = module.ecs.cloudwatch_log_group_name
 }
 
 output "asg_name" {
@@ -81,4 +96,28 @@ output "cloudfront_distribution_id" {
 output "waf_web_acl_arn" {
   description = "WAF Web ACL ARN"
   value       = module.security.waf_web_acl_arn
+}
+
+output "waf_web_acl_name" {
+  description = "WAF Web ACL name used by CloudWatch metric dimensions"
+  value       = module.security.waf_web_acl_name
+}
+
+output "waf_log_group_name" {
+  description = "CloudWatch log group receiving WAF request logs"
+  value       = module.security.waf_log_group_name
+}
+
+output "vpc_flow_log_group_name" {
+  description = "CloudWatch log group receiving VPC Flow Logs"
+  value       = module.security.vpc_flow_logs_log_group
+}
+
+output "monitoring_dashboard_names" {
+  description = "CloudWatch dashboards used as experiment monitoring evidence"
+  value = {
+    infrastructure = module.monitoring.infrastructure_dashboard_name
+    performance    = module.monitoring.performance_dashboard_name
+    security       = module.monitoring.security_dashboard_name
+  }
 }

@@ -59,6 +59,35 @@ collection, dan destroy hemat biaya. Gunakan bersama
    - Route53 dan ACM status.
    - Media CloudFront domain.
 
+## Final Experiment Evidence
+
+Jalankan hanya setelah controlled apply dan post-apply verification lulus.
+
+1. Pastikan image aktif menggunakan digest dari app publish run.
+2. Tambahkan secret `AWS_EXPERIMENT_ROLE_ARN` sesuai policy
+   `bootstrap/github-oidc/experiment-evidence-policy.json`.
+3. Jalankan workflow `Final Experiment Evidence` dari branch `main`.
+4. Isi app commit SHA, image digest, app publish run ID, Terraform apply run ID,
+   dan target HTTPS. Workflow menjalankan tiga trial k6 secara tetap.
+5. Review artifact `final-experiment-evidence-<run-id>`. Canonical JSON harus
+   berstatus `final`.
+6. Pastikan cleanup database dan prefix S3 eksperimen lulus sebelum destroy.
+
+Workflow ini tidak memiliki Terraform apply. ZAP dibatasi allowlist/timeout dan
+k6 dibatasi maksimum 50 VU. DDoS, request flood, dan target di luar domain
+project dilarang.
+
+### Local Backend Cache
+
+Backend aktif memakai S3 native lockfile (`use_lockfile = true`). Working copy
+lama dapat masih menyimpan konfigurasi DynamoDB lock pada
+`env/dev/.terraform/terraform.tfstate` dan menampilkan checksum mismatch yang
+tidak terjadi pada clean GitHub runner. Jangan mengubah Digest DynamoDB secara
+langsung. Validasi source lokal dapat memakai `TF_DATA_DIR` terpisah dan
+`terraform init -backend=false`; untuk operasi state, gunakan clean checkout
+atau hapus cache `.terraform/` yang ignored lalu jalankan `terraform init
+-reconfigure` dengan credential yang benar.
+
 ## App Image dan Evidence Flow
 
 1. Jika kode app berubah, jalankan workflow app untuk quality gate, scanning,
@@ -71,8 +100,8 @@ collection, dan destroy hemat biaya. Gunakan bersama
 4. Terraform menjadi satu-satunya pemilik task definition dan ECS service.
    Workflow aplikasi tidak boleh melakukan register task definition atau update
    service.
-5. Setelah stack aktif, jalankan workflow runtime evidence untuk smoke, ZAP,
-   dan k6.
+5. Setelah stack aktif, jalankan workflow `Final Experiment Evidence` untuk
+   Playwright, bounded ZAP, tiga trial k6, CloudWatch, dan cleanup fixture.
 6. Simpan metadata run dan artifact di `docs/evidence-register.md`.
 
 ## Destroy Hemat Biaya
