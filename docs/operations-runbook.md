@@ -75,7 +75,9 @@ Jalankan hanya setelah controlled apply dan post-apply verification lulus.
    dan target HTTPS. Workflow menjalankan tiga trial k6 secara tetap.
 6. Review artifact `final-experiment-evidence-<run-id>`. Canonical JSON harus
    berstatus `final`.
-7. Pastikan cleanup database dan prefix S3 eksperimen lulus sebelum destroy.
+7. Pastikan cleanup database melaporkan seluruh `remaining*` bernilai `0` dan
+   cleanup kedua prefix S3 melaporkan `remainingPublicObjects=0` serta
+   `remainingPrivateObjects=0` sebelum destroy.
 
 Workflow ini tidak memiliki Terraform apply. ZAP dibatasi allowlist/timeout dan
 k6 dibatasi maksimum 50 VU. DDoS, request flood, dan target di luar domain

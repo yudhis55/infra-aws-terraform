@@ -357,9 +357,26 @@ jobs:
           BUYER_ID="$(jq -r '.users.buyerId' experiment-evidence/fixture/fixture.json)"
           aws s3 rm "s3://$PUBLIC_BUCKET/products/$SELLER_ID/" --recursive
           aws s3 rm "s3://$PRIVATE_BUCKET/payments/$BUYER_ID/" --recursive
+          REMAINING_PUBLIC="$(aws s3api list-objects-v2 \
+            --bucket "$PUBLIC_BUCKET" \
+            --prefix "products/$SELLER_ID/" \
+            --query 'KeyCount' --output text)"
+          REMAINING_PRIVATE="$(aws s3api list-objects-v2 \
+            --bucket "$PRIVATE_BUCKET" \
+            --prefix "payments/$BUYER_ID/" \
+            --query 'KeyCount' --output text)"
+          test "$REMAINING_PUBLIC" = "0"
+          test "$REMAINING_PRIVATE" = "0"
           jq -n \
             --arg experimentId "$EXPERIMENT_ID" \
-            '{experimentId:$experimentId,status:"passed"}' \
+            --argjson remainingPublicObjects "$REMAINING_PUBLIC" \
+            --argjson remainingPrivateObjects "$REMAINING_PRIVATE" \
+            '{
+              experimentId:$experimentId,
+              status:"passed",
+              remainingPublicObjects:$remainingPublicObjects,
+              remainingPrivateObjects:$remainingPrivateObjects
+            }' \
             > experiment-evidence/cleanup/s3-cleanup.json
 
       - name: Clean database fixtures

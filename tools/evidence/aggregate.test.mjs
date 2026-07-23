@@ -84,11 +84,20 @@ test("requires matching setup and cleanup evidence for final conformance", () =>
       experimentId: environment.EXPERIMENT_ID,
       removedUsers: 4,
       removedStores: 1,
+      remainingUsers: 0,
+      remainingStores: 0,
+      remainingOrders: 0,
+      remainingProducts: 0,
     }),
   );
   fs.writeFileSync(
     path.join(directory, "cleanup", "s3-cleanup.json"),
-    JSON.stringify({ experimentId: environment.EXPERIMENT_ID, status: "passed" }),
+    JSON.stringify({
+      experimentId: environment.EXPERIMENT_ID,
+      status: "passed",
+      remainingPublicObjects: 0,
+      remainingPrivateObjects: 0,
+    }),
   );
 
   const result = aggregate(directory, { ...environment, EVIDENCE_STATUS: "" });
@@ -99,6 +108,43 @@ test("requires matching setup and cleanup evidence for final conformance", () =>
   assert.equal(
     aggregate(directory, { ...environment, EVIDENCE_STATUS: "" }).conformance.status,
     "missing",
+  );
+});
+
+test("rejects cleanup evidence when database or S3 objects remain", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "eepistore-evidence-"));
+  fs.mkdirSync(path.join(directory, "fixture"), { recursive: true });
+  fs.mkdirSync(path.join(directory, "cleanup"), { recursive: true });
+  fs.writeFileSync(path.join(directory, "verification-status.txt"), "PASS state\n");
+  fs.writeFileSync(
+    path.join(directory, "fixture", "fixture.json"),
+    JSON.stringify({ experimentId: environment.EXPERIMENT_ID }),
+  );
+  fs.writeFileSync(
+    path.join(directory, "cleanup", "cleanup.json"),
+    JSON.stringify({
+      experimentId: environment.EXPERIMENT_ID,
+      removedUsers: 4,
+      removedStores: 1,
+      remainingUsers: 1,
+      remainingStores: 0,
+      remainingOrders: 0,
+      remainingProducts: 0,
+    }),
+  );
+  fs.writeFileSync(
+    path.join(directory, "cleanup", "s3-cleanup.json"),
+    JSON.stringify({
+      experimentId: environment.EXPERIMENT_ID,
+      status: "passed",
+      remainingPublicObjects: 0,
+      remainingPrivateObjects: 1,
+    }),
+  );
+
+  assert.equal(
+    aggregate(directory, { ...environment, EVIDENCE_STATUS: "" }).conformance.status,
+    "failed",
   );
 });
 
@@ -126,11 +172,24 @@ test("marks a complete, schema-valid package as final", () => {
   );
   fs.writeFileSync(
     path.join(directory, "cleanup", "cleanup.json"),
-    JSON.stringify({ experimentId: environment.EXPERIMENT_ID, removedUsers: 4, removedStores: 1 }),
+    JSON.stringify({
+      experimentId: environment.EXPERIMENT_ID,
+      removedUsers: 4,
+      removedStores: 1,
+      remainingUsers: 0,
+      remainingStores: 0,
+      remainingOrders: 0,
+      remainingProducts: 0,
+    }),
   );
   fs.writeFileSync(
     path.join(directory, "cleanup", "s3-cleanup.json"),
-    JSON.stringify({ experimentId: environment.EXPERIMENT_ID, status: "passed" }),
+    JSON.stringify({
+      experimentId: environment.EXPERIMENT_ID,
+      status: "passed",
+      remainingPublicObjects: 0,
+      remainingPrivateObjects: 0,
+    }),
   );
   for (const stage of ["plan", "apply", "migration", "verification"]) {
     fs.writeFileSync(
