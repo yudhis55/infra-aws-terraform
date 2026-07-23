@@ -25,6 +25,8 @@ belum ditinjau.
 
 | Area | Evidence | Source | Status | BAB 4 Usage |
 | --- | --- | --- | --- | --- |
+| App remediation CI | Quality, CodeQL, npm audit, Docker build, SBOM, dan Trivy container scan untuk commit `f94ad65` | GitHub Actions app run `29981599919`, PR `yudhis55/eepistore#1` | Valid CI evidence | Bukti gate source remediation; belum menjadi bukti image publish/deployment |
+| IaC remediation CI | fmt, validate, TFLint, Trivy IaC, dan Checkov untuk commit `84eacb5` | GitHub Actions infra run `29981610767`, PR `yudhis55/infra-aws-terraform#1` | Valid CI evidence | Bukti source IaC lulus gate; plan/apply memang tidak dijalankan pada PR |
 | App image publish | Image `557947229844.dkr.ecr.ap-southeast-3.amazonaws.com/eepistore-repo:18fb24f6d419722841f587cbf4355aa2419c2dbf` | GitHub Actions app run `28765082346`, artifact `published-image` | Stale | Hanya bukti baseline lama; source aplikasi sudah berubah pada remediation 2026-07-23 |
 | App image publish lama | Image tag `1496d689d5bd7d304995fdde7ab2feacdeb15003` | GitHub Actions app run `28748288932` | Stale | Jangan dipakai sebagai image final karena sudah digantikan `18fb24f...` |
 | Terraform apply | Controlled apply dengan strict readiness | GitHub Actions infra run `28765301534`, artifact `terraform-plan` dan `post-apply-verification` | Valid baseline | Boleh dipakai sebagai bukti bahwa desain pernah berhasil, tetapi eksperimen BAB 4 final sebaiknya mengambil paket evidence lengkap ulang |
