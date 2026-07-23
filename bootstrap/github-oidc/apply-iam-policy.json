@@ -43,7 +43,7 @@
       "Resource": "arn:aws:iam::557947229844:instance-profile/eepistore-*"
     },
     {
-      "Sid": "AttachEcsManagedPolicy",
+      "Sid": "AttachApprovedServicePolicies",
       "Effect": "Allow",
       "Action": [
         "iam:AttachRolePolicy",
@@ -52,7 +52,10 @@
       "Resource": "arn:aws:iam::557947229844:role/eepistore-*",
       "Condition": {
         "ArnEquals": {
-          "iam:PolicyARN": "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
+          "iam:PolicyARN": [
+            "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role",
+            "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
+          ]
         }
       }
     },
@@ -65,7 +68,8 @@
         "StringEquals": {
           "iam:PassedToService": [
             "ec2.amazonaws.com",
-            "ecs-tasks.amazonaws.com"
+            "ecs-tasks.amazonaws.com",
+            "monitoring.rds.amazonaws.com"
           ]
         }
       }
