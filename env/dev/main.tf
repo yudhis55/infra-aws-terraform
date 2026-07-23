@@ -185,7 +185,6 @@ module "ecs" {
   enable_deletion_protection = var.enable_deletion_protection
   acm_certificate_arn        = local.alb_certificate_arn
 
-  depends_on = [module.networking, module.rds, module.cdn]
 }
 
 # ==================== Phase 4: Security & WAF ====================

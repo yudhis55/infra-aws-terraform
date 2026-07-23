@@ -10,8 +10,9 @@ resource "aws_db_proxy" "main" {
   idle_client_timeout    = 1800
 
   auth {
-    auth_scheme = "SECRETS"
-    secret_arn  = aws_db_instance.main.master_user_secret[0].secret_arn
+    auth_scheme               = "SECRETS"
+    client_password_auth_type = "POSTGRES_SCRAM_SHA_256"
+    secret_arn                = aws_db_instance.main.master_user_secret[0].secret_arn
   }
 
   tags = {
