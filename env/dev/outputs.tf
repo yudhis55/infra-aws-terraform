@@ -58,9 +58,14 @@ output "rds_proxy_id" {
   value       = module.rds.rds_proxy_id
 }
 
-output "s3_bucket_name" {
-  description = "Private application upload bucket"
-  value       = module.storage.bucket_id
+output "s3_public_bucket_name" {
+  description = "Private S3 origin bucket for public media"
+  value       = module.storage.public_bucket_id
+}
+
+output "s3_private_bucket_name" {
+  description = "S3 bucket for private payment and verification documents"
+  value       = module.storage.private_bucket_id
 }
 
 output "cloudfront_media_url" {

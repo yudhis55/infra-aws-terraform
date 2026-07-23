@@ -93,11 +93,11 @@ resource "aws_cloudwatch_metric_alarm" "ecs_running_tasks" {
   alarm_name          = "${var.project_name}-ecs-insufficient-running-tasks"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = 2
-  metric_name         = "RunningCount"
-  namespace           = "AWS/ECS"
+  metric_name         = "RunningTaskCount"
+  namespace           = "ECS/ContainerInsights"
   period              = 300
   statistic           = "Average"
-  threshold           = var.ecs_min_size
+  threshold           = var.ecs_min_running_tasks
   alarm_description   = "Alert when running ECS tasks fall below minimum"
   alarm_actions       = [aws_sns_topic.alerts.arn]
 
@@ -229,7 +229,7 @@ resource "aws_cloudwatch_metric_alarm" "rds_read_latency" {
   namespace           = "AWS/RDS"
   period              = 300
   statistic           = "Average"
-  threshold           = 5 # 5ms
+  threshold           = 0.005 # CloudWatch reports RDS latency in seconds.
   alarm_description   = "Alert when RDS read latency exceeds 5ms"
   alarm_actions       = [aws_sns_topic.alerts.arn]
 
@@ -250,7 +250,7 @@ resource "aws_cloudwatch_metric_alarm" "rds_write_latency" {
   namespace           = "AWS/RDS"
   period              = 300
   statistic           = "Average"
-  threshold           = 10 # 10ms
+  threshold           = 0.010 # CloudWatch reports RDS latency in seconds.
   alarm_description   = "Alert when RDS write latency exceeds 10ms"
   alarm_actions       = [aws_sns_topic.alerts.arn]
 
@@ -301,7 +301,7 @@ resource "aws_cloudwatch_metric_alarm" "asg_insufficient_capacity" {
   namespace           = "AWS/AutoScaling"
   period              = 300
   statistic           = "Average"
-  threshold           = var.ecs_min_size
+  threshold           = var.asg_min_size
   alarm_description   = "Alert when ASG instances fall below minimum"
   alarm_actions       = [aws_sns_topic.alerts.arn]
 

@@ -65,12 +65,24 @@ resource "aws_launch_template" "ecs" {
 
 resource "aws_autoscaling_group" "ecs" {
   name                      = "${var.project_name}-asg"
-  min_size                  = var.ecs_min_size
-  max_size                  = var.ecs_max_size
-  desired_capacity          = var.ecs_desired_capacity
+  min_size                  = var.asg_min_size
+  max_size                  = var.asg_max_size
+  desired_capacity          = var.asg_desired_capacity
   health_check_type         = "EC2"
   health_check_grace_period = 300
   vpc_zone_identifier       = var.private_app_subnets
+  enabled_metrics = [
+    "GroupDesiredCapacity",
+    "GroupInServiceCapacity",
+    "GroupInServiceInstances",
+    "GroupMaxSize",
+    "GroupMinSize",
+    "GroupPendingInstances",
+    "GroupStandbyInstances",
+    "GroupTerminatingInstances",
+    "GroupTotalCapacity",
+    "GroupTotalInstances"
+  ]
 
   launch_template {
     id      = aws_launch_template.ecs.id

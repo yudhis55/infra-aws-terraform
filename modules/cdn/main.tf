@@ -7,6 +7,10 @@ data "aws_cloudfront_response_headers_policy" "security_headers" {
   name = "Managed-SecurityHeadersPolicy"
 }
 
+data "aws_cloudfront_cache_policy" "caching_optimized" {
+  name = "Managed-CachingOptimized"
+}
+
 resource "aws_cloudfront_origin_access_control" "uploads" {
   name                              = "${var.project_name}-${var.environment}-uploads-oac"
   description                       = "Allow CloudFront to read private upload objects"
@@ -34,15 +38,8 @@ resource "aws_cloudfront_distribution" "uploads" {
     allowed_methods            = ["GET", "HEAD", "OPTIONS"]
     cached_methods             = ["GET", "HEAD"]
     compress                   = true
+    cache_policy_id            = data.aws_cloudfront_cache_policy.caching_optimized.id
     response_headers_policy_id = data.aws_cloudfront_response_headers_policy.security_headers.id
-
-    forwarded_values {
-      query_string = false
-
-      cookies {
-        forward = "none"
-      }
-    }
   }
 
   restrictions {

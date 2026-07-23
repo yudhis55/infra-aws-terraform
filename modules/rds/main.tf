@@ -8,6 +8,10 @@ resource "aws_db_subnet_group" "main" {
   }
 }
 
+resource "random_id" "final_snapshot" {
+  byte_length = 4
+}
+
 # RDS PostgreSQL Instance with Multi-AZ
 resource "aws_db_instance" "main" {
   identifier     = "${var.project_name}-${var.environment}-db"
@@ -15,9 +19,10 @@ resource "aws_db_instance" "main" {
   engine_version = var.db_engine_version
 
   # Database Configuration
-  db_name  = var.db_name
-  username = var.db_username
-  password = var.db_password
+  db_name                       = var.db_name
+  username                      = var.db_username
+  manage_master_user_password   = true
+  master_user_secret_kms_key_id = aws_kms_key.rds.arn
 
   # Instance & Storage Configuration
   instance_class     = var.db_instance_class
@@ -49,7 +54,7 @@ resource "aws_db_instance" "main" {
 
   # Deletion Protection & Final Snapshot
   skip_final_snapshot       = var.skip_final_snapshot
-  final_snapshot_identifier = var.skip_final_snapshot ? null : "${var.project_name}-${var.environment}-final-snapshot"
+  final_snapshot_identifier = var.skip_final_snapshot ? null : "${var.project_name}-${var.environment}-final-${random_id.final_snapshot.hex}"
   deletion_protection       = var.enable_deletion_protection
 
   # Enable Enhanced Monitoring
@@ -79,10 +84,11 @@ resource "aws_db_parameter_group" "main" {
   name_prefix = "${var.project_name}-${var.environment}-"
   description = "Custom parameter group for PostgreSQL"
 
-  # Example: Enable log statements
+  # DDL logging supports schema-change evidence without recording sensitive
+  # application values from every SQL statement.
   parameter {
     name  = "log_statement"
-    value = "all"
+    value = "ddl"
   }
 
   parameter {

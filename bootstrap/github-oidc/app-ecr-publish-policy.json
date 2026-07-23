@@ -1,0 +1,27 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EcrAuthorization",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "PublishEepistoreImages",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:CompleteLayerUpload",
+        "ecr:DescribeImages",
+        "ecr:DescribeRepositories",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:InitiateLayerUpload",
+        "ecr:ListImages",
+        "ecr:PutImage",
+        "ecr:UploadLayerPart"
+      ],
+      "Resource": "arn:aws:ecr:ap-southeast-3:557947229844:repository/eepistore-repo"
+    }
+  ]
+}

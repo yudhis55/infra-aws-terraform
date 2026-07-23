@@ -1,0 +1,97 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadIamMetadata",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetInstanceProfile",
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListInstanceProfilesForRole",
+        "iam:ListRolePolicies",
+        "iam:ListRoleTags"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ManageEepistoreRoles",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:DeleteRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:TagRole",
+        "iam:UntagRole",
+        "iam:UpdateAssumeRolePolicy"
+      ],
+      "Resource": "arn:aws:iam::557947229844:role/eepistore-*"
+    },
+    {
+      "Sid": "ManageEepistoreInstanceProfiles",
+      "Effect": "Allow",
+      "Action": [
+        "iam:AddRoleToInstanceProfile",
+        "iam:CreateInstanceProfile",
+        "iam:DeleteInstanceProfile",
+        "iam:RemoveRoleFromInstanceProfile",
+        "iam:TagInstanceProfile",
+        "iam:UntagInstanceProfile"
+      ],
+      "Resource": "arn:aws:iam::557947229844:instance-profile/eepistore-*"
+    },
+    {
+      "Sid": "AttachEcsManagedPolicy",
+      "Effect": "Allow",
+      "Action": [
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy"
+      ],
+      "Resource": "arn:aws:iam::557947229844:role/eepistore-*",
+      "Condition": {
+        "ArnEquals": {
+          "iam:PolicyARN": "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
+        }
+      }
+    },
+    {
+      "Sid": "PassEepistoreRuntimeRoles",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::557947229844:role/eepistore-*",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": [
+            "ec2.amazonaws.com",
+            "ecs-tasks.amazonaws.com"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "ManageRequiredServiceLinkedRoles",
+      "Effect": "Allow",
+      "Action": "iam:CreateServiceLinkedRole",
+      "Resource": "arn:aws:iam::557947229844:role/aws-service-role/*",
+      "Condition": {
+        "StringLike": {
+          "iam:AWSServiceName": [
+            "autoscaling.amazonaws.com",
+            "ecs.amazonaws.com",
+            "elasticloadbalancing.amazonaws.com",
+            "rds.amazonaws.com",
+            "spot.amazonaws.com"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "ReadServiceLinkedRoleDeletion",
+      "Effect": "Allow",
+      "Action": "iam:GetServiceLinkedRoleDeletionStatus",
+      "Resource": "*"
+    }
+  ]
+}

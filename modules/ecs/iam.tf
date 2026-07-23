@@ -159,7 +159,10 @@ resource "aws_iam_role_policy" "ecs_task_s3_policy" {
           "s3:ListBucket",
           "s3:GetBucketLocation"
         ]
-        Resource = var.s3_bucket_arn
+        Resource = [
+          var.s3_public_bucket_arn,
+          var.s3_private_bucket_arn
+        ]
       },
       {
         Effect = "Allow"
@@ -168,7 +171,10 @@ resource "aws_iam_role_policy" "ecs_task_s3_policy" {
           "s3:PutObject",
           "s3:DeleteObject"
         ]
-        Resource = "${var.s3_bucket_arn}/*"
+        Resource = [
+          "${var.s3_public_bucket_arn}/*",
+          "${var.s3_private_bucket_arn}/*"
+        ]
       }
     ]
   })

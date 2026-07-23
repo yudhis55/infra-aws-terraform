@@ -80,13 +80,13 @@ output "rds_proxy_enabled" {
 
 # Secrets Manager Outputs
 output "rds_secrets_manager_secret_arn" {
-  value       = var.secrets_manager_secret_arn != "" ? var.secrets_manager_secret_arn : (var.enable_rds_proxy ? aws_secretsmanager_secret.db_credentials[0].arn : null)
-  description = "Secrets Manager secret ARN for RDS credentials"
+  value       = aws_db_instance.main.master_user_secret[0].secret_arn
+  description = "RDS-managed Secrets Manager secret ARN for master credentials"
 }
 
 output "rds_secrets_manager_secret_name" {
-  value       = var.secrets_manager_secret_arn == "" && var.enable_rds_proxy ? aws_secretsmanager_secret.db_credentials[0].name : null
-  description = "Secrets Manager secret name for RDS credentials"
+  value       = split(":secret:", aws_db_instance.main.master_user_secret[0].secret_arn)[1]
+  description = "RDS-managed Secrets Manager secret name for master credentials"
 }
 
 # Security Group Outputs
@@ -107,7 +107,7 @@ output "connection_info_via_proxy" {
     port       = 5432
     database   = var.db_name
     username   = var.db_username
-    secret_arn = var.secrets_manager_secret_arn != "" ? var.secrets_manager_secret_arn : aws_secretsmanager_secret.db_credentials[0].arn
+    secret_arn = aws_db_instance.main.master_user_secret[0].secret_arn
   } : null
   description = "Connection information for applications using RDS Proxy"
   sensitive   = true
@@ -119,7 +119,7 @@ output "connection_info_direct" {
     port       = aws_db_instance.main.port
     database   = var.db_name
     username   = var.db_username
-    secret_arn = var.secrets_manager_secret_arn != "" ? var.secrets_manager_secret_arn : aws_secretsmanager_secret.db_credentials[0].arn
+    secret_arn = aws_db_instance.main.master_user_secret[0].secret_arn
   }
   description = "Direct connection information to RDS (bypass proxy)"
   sensitive   = true

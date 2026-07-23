@@ -29,16 +29,6 @@ variable "db_username" {
   sensitive   = true
 }
 
-variable "db_password" {
-  description = "Master database password (WARNING: Store in tfvars or use Secrets Manager)"
-  type        = string
-  sensitive   = true
-  validation {
-    condition     = length(var.db_password) >= 8
-    error_message = "Database password must be at least 8 characters long."
-  }
-}
-
 variable "db_engine_version" {
   description = "PostgreSQL engine version"
   type        = string
@@ -129,30 +119,48 @@ variable "ecs_instance_type" {
   }
 }
 
-variable "ecs_min_size" {
+variable "ecs_instance_min_size" {
   description = "Minimum number of ECS EC2 instances"
   type        = number
   default     = 2
 
   validation {
-    condition     = var.ecs_min_size >= 1 && var.ecs_min_size <= 10
+    condition     = var.ecs_instance_min_size >= 1 && var.ecs_instance_min_size <= 10
     error_message = "Min size must be between 1 and 10."
   }
 }
 
-variable "ecs_max_size" {
+variable "ecs_instance_max_size" {
   description = "Maximum number of ECS EC2 instances"
   type        = number
   default     = 6
 
   validation {
-    condition     = var.ecs_max_size >= 2 && var.ecs_max_size <= 20
+    condition     = var.ecs_instance_max_size >= 2 && var.ecs_instance_max_size <= 20
     error_message = "Max size must be between 2 and 20."
   }
 }
 
-variable "ecs_desired_capacity" {
-  description = "Desired number of ECS tasks"
+variable "ecs_instance_desired_capacity" {
+  description = "Desired number of ECS EC2 instances"
+  type        = number
+  default     = 2
+}
+
+variable "ecs_service_min_tasks" {
+  description = "Minimum number of application tasks"
+  type        = number
+  default     = 2
+}
+
+variable "ecs_service_max_tasks" {
+  description = "Maximum number of application tasks"
+  type        = number
+  default     = 6
+}
+
+variable "ecs_service_desired_count" {
+  description = "Desired number of application tasks"
   type        = number
   default     = 2
 }
@@ -179,24 +187,12 @@ variable "app_image_uri" {
   }
 }
 
-variable "secrets_manager_secret_arn" {
-  description = "ARN of custom Secrets Manager secret for RDS (leave empty to use RDS-created secret)"
-  type        = string
-  default     = ""
-}
 
 # ==================== APPLICATION RUNTIME CONFIGURATION ====================
 variable "app_base_url" {
   description = "Public application base URL used by auth callbacks. Leave empty to use the ALB DNS name."
   type        = string
   default     = ""
-}
-
-variable "auth_secret" {
-  description = "Optional NextAuth/Auth.js secret. Leave empty to generate one in Secrets Manager."
-  type        = string
-  default     = ""
-  sensitive   = true
 }
 
 variable "health_check_path" {
@@ -226,20 +222,6 @@ variable "smtp_port" {
   description = "SMTP port used by the application"
   type        = number
   default     = 587
-}
-
-variable "smtp_user" {
-  description = "SMTP username"
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
-variable "smtp_pass" {
-  description = "SMTP password"
-  type        = string
-  default     = ""
-  sensitive   = true
 }
 
 variable "smtp_from" {

@@ -19,38 +19,19 @@ variable "public_subnets" {
   type        = list(string)
 }
 
-variable "private_subnets" {
-  description = "Private subnets for ECS (deprecated - use private_app_subnets)"
-  type        = list(string)
-}
-
 variable "private_app_subnets" {
   description = "Private application subnets for EC2 instances"
   type        = list(string)
 }
 
 variable "alb_security_group_id" {
-  description = "Existing ALB security group ID. Required when create_alb_security_group is false."
+  description = "ALB security group ID owned by the networking module"
   type        = string
-  default     = null
-}
-
-variable "create_alb_security_group" {
-  description = "Whether this module creates the ALB security group. Set false when the networking module owns it."
-  type        = bool
-  default     = true
 }
 
 variable "ecs_security_group_id" {
-  description = "Existing ECS security group ID. Required when create_ecs_security_group is false."
+  description = "ECS security group ID owned by the networking module"
   type        = string
-  default     = null
-}
-
-variable "create_ecs_security_group" {
-  description = "Whether this module creates the ECS security group. Set false when the networking module owns it."
-  type        = bool
-  default     = true
 }
 
 variable "ecr_image" {
@@ -65,20 +46,38 @@ variable "ecs_instance_type" {
   default     = "t3.medium" # t3.small = 2GB memory, t3.medium = 4GB memory
 }
 
-variable "ecs_min_size" {
+variable "asg_min_size" {
   description = "Minimum number of EC2 instances in ASG"
   type        = number
   default     = 2
 }
 
-variable "ecs_max_size" {
+variable "asg_max_size" {
   description = "Maximum number of EC2 instances in ASG"
   type        = number
   default     = 6
 }
 
-variable "ecs_desired_capacity" {
-  description = "Desired number of ECS tasks running"
+variable "asg_desired_capacity" {
+  description = "Desired number of EC2 instances in ASG"
+  type        = number
+  default     = 2
+}
+
+variable "service_min_tasks" {
+  description = "Minimum number of ECS application tasks"
+  type        = number
+  default     = 2
+}
+
+variable "service_max_tasks" {
+  description = "Maximum number of ECS application tasks"
+  type        = number
+  default     = 6
+}
+
+variable "service_desired_count" {
+  description = "Desired number of ECS application tasks"
   type        = number
   default     = 2
 }
@@ -126,26 +125,29 @@ variable "app_base_url" {
   default     = ""
 }
 
-variable "auth_secret" {
-  description = "Optional Auth.js secret. Leave empty to generate one in Secrets Manager."
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
 variable "app_secrets_kms_key_id" {
   description = "KMS key ARN or ID used to encrypt application runtime secrets."
   type        = string
   default     = ""
 }
 
-variable "s3_bucket_name" {
-  description = "Application upload S3 bucket name"
+variable "s3_public_bucket_name" {
+  description = "S3 bucket name for public media"
   type        = string
 }
 
-variable "s3_bucket_arn" {
-  description = "Application upload S3 bucket ARN"
+variable "s3_public_bucket_arn" {
+  description = "S3 bucket ARN for public media"
+  type        = string
+}
+
+variable "s3_private_bucket_name" {
+  description = "S3 bucket name for private documents"
+  type        = string
+}
+
+variable "s3_private_bucket_arn" {
+  description = "S3 bucket ARN for private documents"
   type        = string
 }
 
@@ -169,20 +171,6 @@ variable "smtp_port" {
   description = "SMTP port used by the application"
   type        = number
   default     = 587
-}
-
-variable "smtp_user" {
-  description = "SMTP username"
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
-variable "smtp_pass" {
-  description = "SMTP password"
-  type        = string
-  default     = ""
-  sensitive   = true
 }
 
 variable "smtp_from" {

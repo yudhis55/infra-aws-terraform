@@ -17,13 +17,9 @@ ALB access logs.
 
 ## Input Keamanan Jaringan
 
-Default modul ECS masih bisa membuat security group ALB/ECS sendiri untuk
-penggunaan mandiri. Pada environment utama project ini, security group dimiliki
-oleh modul `networking`, sehingga caller wajib mengirim
-`create_alb_security_group=false` dan `create_ecs_security_group=false` bersama
-ID security group dari modul networking. Keputusan eksplisit ini membuat plan
-Terraform stabil karena jumlah resource tidak bergantung pada ID resource yang
-baru diketahui saat apply.
+Security group ALB dan ECS dimiliki oleh module `networking`. Module ECS hanya
+menerima ID security group tersebut sehingga aturan jaringan memiliki satu
+sumber kebenaran dan tidak diduplikasi.
 
 ## Catatan Operasional
 
@@ -43,3 +39,7 @@ perlu menulis cache runtime.
 
 Untuk production, `enable_https=true` wajib disertai `acm_certificate_arn` yang
 sudah valid. Self-signed certificate tidak dipakai.
+
+Kapasitas EC2 dan jumlah task ECS memakai input terpisah. `asg_*` mengatur
+container instances, sedangkan `service_*` mengatur task aplikasi. Pemisahan ini
+mencegah satu nilai scaling dipakai untuk dua lapisan yang berbeda.
