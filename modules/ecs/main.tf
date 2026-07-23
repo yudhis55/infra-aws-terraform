@@ -205,10 +205,11 @@ resource "aws_cloudwatch_log_group" "ecs" {
 # ==================== ECS Service ====================
 
 resource "aws_ecs_service" "app" {
-  name            = "${var.project_name}-service"
-  cluster         = aws_ecs_cluster.main.id
-  task_definition = aws_ecs_task_definition.app.arn
-  desired_count   = var.service_desired_count
+  name                 = "${var.project_name}-service"
+  cluster              = aws_ecs_cluster.main.id
+  task_definition      = aws_ecs_task_definition.app.arn
+  desired_count        = var.service_desired_count
+  force_new_deployment = true
 
   capacity_provider_strategy {
     capacity_provider = aws_ecs_capacity_provider.ecs.name
@@ -233,6 +234,7 @@ resource "aws_ecs_service" "app" {
 
   depends_on = [
     aws_ecs_cluster_capacity_providers.main,
+    aws_iam_role_policy_attachment.ecs_task_execution_policy,
     aws_lb_listener.http_ec2,
     aws_lb_listener.https
   ]
