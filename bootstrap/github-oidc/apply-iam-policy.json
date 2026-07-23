@@ -72,7 +72,8 @@
             "ec2.amazonaws.com",
             "ecs-tasks.amazonaws.com",
             "monitoring.rds.amazonaws.com",
-            "rds.amazonaws.com"
+            "rds.amazonaws.com",
+            "vpc-flow-logs.amazonaws.com"
           ]
         }
       }
