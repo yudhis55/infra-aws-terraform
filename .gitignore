@@ -8,3 +8,8 @@ tfplan*
 *.out
 plan.txt
 phase*_plan.txt
+tmp-*/
+verification-evidence/
+destroy-evidence/
+*-evidence/
+*.sarif

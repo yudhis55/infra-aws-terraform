@@ -1,0 +1,29 @@
+misconfigurations:
+  - id: AVD-AWS-0011
+    paths: ["modules/cdn/main.tf"]
+    statement: "The distribution serves public media only; CloudFront WAF is deferred and not claimed in BAB 4."
+    expired_at: 2026-12-31
+  - id: AVD-AWS-0053
+    paths: ["modules/ecs/main.tf"]
+    statement: "The internet-facing ALB is the intentional public ingress boundary; ECS and RDS are private."
+    expired_at: 2026-12-31
+  - id: AVD-AWS-0054
+    paths: ["modules/ecs/asg.tf"]
+    statement: "The HTTP forwarding listener has count zero in production; port 80 redirects to the HTTPS listener."
+    expired_at: 2026-12-31
+  - id: AVD-AWS-0104
+    paths:
+      - "modules/networking/security-groups.tf"
+      - "modules/ecs/main.tf"
+    statement: "ECS outbound access supports AWS APIs and configured integrations; ingress remains least privilege."
+    expired_at: 2026-12-31
+  - id: AVD-AWS-0132
+    paths:
+      - "modules/storage/main.tf"
+      - "modules/ecs/alb-logs.tf"
+    statement: "S3-managed encryption is accepted for workload and ALB evidence buckets in the thesis baseline."
+    expired_at: 2026-12-31
+  - id: AVD-AWS-0136
+    paths: ["modules/monitoring/alarms.tf"]
+    statement: "The SNS topic uses the AWS-managed SNS key; a dedicated CMK is deferred."
+    expired_at: 2026-12-31

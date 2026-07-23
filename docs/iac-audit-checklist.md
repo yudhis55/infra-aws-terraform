@@ -18,7 +18,7 @@ dipelajari.
 ## Security Baseline
 
 - Tidak ada secret, state, plan, atau credential di Git.
-- Remote state memakai S3 encrypted, DynamoDB lock, dan KMS.
+- Remote state memakai S3 encrypted, native lockfile, dan KMS.
 - Public ingress hanya ALB pada 80/443; HTTP redirect ke HTTPS.
 - ECS dan RDS berada di private subnet.
 - Security group mengikuti least privilege antar ALB, ECS, RDS Proxy, dan RDS.
