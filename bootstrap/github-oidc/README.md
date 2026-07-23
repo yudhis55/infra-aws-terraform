@@ -11,7 +11,9 @@ permission miliknya sendiri.
   walaupun role tidak lagi melakukan deployment ECS.
 - `eepistore-infra-plan-role`: memakai AWS managed `ReadOnlyAccess` dan inline
   policy `plan-backend-policy.json` untuk membaca state serta mengelola S3
-  lockfile.
+  lockfile. Policy inline juga dapat membaca secret runtime project saat
+  Terraform me-refresh resource, dengan dekripsi dibatasi ke alias KMS RDS
+  environment.
 - `eepistore-infra-apply-role`: memakai AWS managed `PowerUserAccess` dan inline
   policy `apply-iam-policy.json` untuk IAM resource project yang tidak dicakup
   PowerUserAccess.

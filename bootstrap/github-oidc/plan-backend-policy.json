@@ -30,6 +30,23 @@
         "kms:GenerateDataKey"
       ],
       "Resource": "arn:aws:kms:ap-southeast-3:557947229844:key/fd2250a6-ed79-4f87-8c18-1d6e14df8e84"
+    },
+    {
+      "Sid": "ReadEepistoreRuntimeSecrets",
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "arn:aws:secretsmanager:ap-southeast-3:557947229844:secret:eepistore/*"
+    },
+    {
+      "Sid": "DecryptEepistoreRuntimeSecrets",
+      "Effect": "Allow",
+      "Action": "kms:Decrypt",
+      "Resource": "arn:aws:kms:ap-southeast-3:557947229844:key/*",
+      "Condition": {
+        "ForAnyValue:StringEquals": {
+          "kms:ResourceAliases": "alias/eepistore-dev-rds"
+        }
+      }
     }
   ]
 }
