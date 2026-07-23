@@ -69,7 +69,8 @@
           "iam:PassedToService": [
             "ec2.amazonaws.com",
             "ecs-tasks.amazonaws.com",
-            "monitoring.rds.amazonaws.com"
+            "monitoring.rds.amazonaws.com",
+            "rds.amazonaws.com"
           ]
         }
       }
