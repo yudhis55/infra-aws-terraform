@@ -320,6 +320,10 @@ jobs:
             --image-ids file://ecr-image-ids.json \
             >/dev/null
           echo "Deleted $IMAGE_COUNT image references from $REPOSITORY_NAME."
+      - name: Empty versioned workload buckets
+        if: inputs.action == 'destroy'
+        shell: bash
+        run: scripts/empty-workload-buckets.sh "$TF_VAR_project_name" dev
       - name: Apply reviewed plan
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
