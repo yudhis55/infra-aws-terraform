@@ -92,8 +92,11 @@ semua target healthy, HTTPS aktif, dan evidence tersimpan sebagai artifact.
 
 ## Status Evidence Saat Ini
 
-- Controlled apply run `28765301534` pernah lulus dengan strict readiness JSON.
-- Controlled destroy run `28767137374` sudah menghapus stack untuk hemat biaya.
-- Evidence baseline tersebut valid sebagai bukti desain pernah berjalan, tetapi
-  paket eksperimen BAB 4 final masih perlu melengkapi DAST, load test,
-  functional smoke, dan monitoring evidence.
+- Final rollout dan post-apply verification run `30057073750` lulus.
+- Final experiment run `30057455143` melengkapi functional/authorization,
+  bounded ZAP, tiga trial k6, CloudWatch, serta cleanup fixture.
+- Canonical evidence diperbaiki dan divalidasi ulang secara immutable oleh run
+  `30060088000`.
+- Final controlled destroy run `30063265875` menghasilkan
+  `PASS terraform-state-empty`; audit AWS sesudahnya tidak menemukan workload
+  berbiaya utama.

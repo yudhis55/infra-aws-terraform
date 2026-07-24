@@ -30,7 +30,7 @@ collection, dan destroy hemat biaya. Gunakan bersama
    - `TF_VAR_APP_IMAGE_URI` berisi image URI immutable dengan digest atau commit SHA
    - password RDS dan `AUTH_SECRET` dibuat Terraform di Secrets Manager
 2. Jalankan GitHub Actions Terraform CI dengan `action=plan`.
-3. Review artifact `terraform-plan/tfplan.txt`.
+3. Review artifact `terraform-plan-review/tfplan.txt`.
 4. Stop jika ada destroy/replacement yang tidak direncanakan, bucket public,
    CORS wildcard, image bukan SHA, ALB tanpa HTTPS, RDS public, atau RDS Proxy
    tanpa target.
@@ -79,9 +79,12 @@ Jalankan hanya setelah controlled apply dan post-apply verification lulus.
    cleanup kedua prefix S3 melaporkan `remainingPublicObjects=0` serta
    `remainingPrivateObjects=0` sebelum destroy.
 
-Workflow ini tidak memiliki Terraform apply. ZAP dibatasi allowlist/timeout dan
-k6 dibatasi maksimum 50 VU. DDoS, request flood, dan target di luar domain
-project dilarang.
+Workflow ini tidak memiliki Terraform apply. ZAP dibatasi allowlist/timeout.
+Profil performa reguler k6 menggunakan baseline 2 VU dan peak 3 VU agar berada
+di bawah budget rate rule WAF. Request burst untuk membuktikan deteksi WAF
+harus dijalankan sebagai skenario terpisah dan tidak boleh dicampur dengan
+angka performa reguler. DDoS, request flood, dan target di luar domain project
+dilarang.
 
 Setelah perubahan IAM, jalankan `node scripts/validate-experiment-iam.mjs`.
 Hentikan proses jika Access Analyzer mengeluarkan warning/error, izin wajib
@@ -118,19 +121,33 @@ atau hapus cache `.terraform/` yang ignored lalu jalankan `terraform init
 
 1. Jalankan workflow Terraform dengan `action=destroy`.
 2. Review plan sebelum approval:
-   - mayoritas harus destroy-only,
+   - harus destroy-only,
    - tidak boleh ada create/update besar tanpa alasan,
-   - deletion protection override aktif,
-   - bucket dan ECR force destroy/delete aktif,
+   - pre-step project-scoped untuk deletion protection RDS/ALB aktif,
+   - ECR pre-clean aktif,
+   - purge current objects, versions, dan delete markers hanya menargetkan
+     bucket public media, private documents, dan ALB logs,
+   - bucket remote state tidak masuk target purge maupun destroy,
    - keputusan final snapshot jelas.
 3. Approve environment `production` setelah review lulus.
 4. Setelah destroy:
    - cek artifact `post-destroy-verification` berisi `PASS terraform-state-empty`,
    - hapus final RDS snapshot jika muncul dan tidak diperlukan,
-   - cek secret sisa dan force-delete bila masih ada,
+   - cek secret sisa; scheduled deletion adalah kondisi yang diharapkan,
    - cek resource mahal: NAT, RDS, ALB, ECS/EC2, ECR, S3 workload, CloudFront.
 5. Jangan hapus backend remote state kecuali target berubah menjadi nol biaya
    absolut dan siap bootstrap ulang nanti.
+
+Jika destroy berhenti setelah sebagian resource terhapus, jangan mengulang
+saved plan lama. Jalankan workflow `action=destroy` lagi agar refresh state dan
+plan baru mencerminkan resource tersisa. Approve hanya jika plan recovery tetap
+`0 create`, `0 update`, dan seluruh aksi adalah destroy yang diharapkan.
+
+Catatan implementasi: variable `force_destroy`, `ecr_force_delete`, atau
+deletion-protection override tidak dapat diandalkan untuk mengubah atribut
+resource yang langsung dihapus oleh destroy plan. Karena itu workflow memakai
+pre-step eksplisit, terbatas pada nama/prefix workload Eepistore, sebelum
+menjalankan saved plan yang telah direview.
 
 ## Cost Audit Notes
 
@@ -142,3 +159,11 @@ atau hapus cache `.terraform/` yang ignored lalu jalankan `terraform init
   diperlukan.
 - Resource yang sengaja boleh tersisa: domain, hosted zone, Terraform state
   bucket, lockfile object, dan KMS backend.
+
+## Final Experiment Lineage
+
+- App publish: run `30056560034`.
+- Terraform rollout dan post-apply verification: run `30057073750`.
+- Functional, ZAP, tiga trial k6, CloudWatch, dan cleanup: run `30057455143`.
+- Canonical evidence reprocess: run `30060088000`.
+- Final state-empty destroy: run `30063265875`.

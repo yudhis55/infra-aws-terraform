@@ -1,33 +1,34 @@
 # BAB 4 Experiment Matrix
 
-Matriks ini menjadi daftar evidence yang harus tersedia sebelum BAB 4 ditulis.
-Status `Missing` berarti klaim belum boleh dimasukkan sebagai hasil final.
+Matriks ini menghubungkan skenario, artifact, metrik, dan kriteria lulus.
+Angka final harus diambil dari canonical evidence, bukan disalin dari log
+recovery atau dashboard secara manual.
 
-| Experiment | Input | Execution | Required Artifact | Metrics / Checks | Pass Criteria | Current Status |
+| Experiment | Input | Execution | Required Artifact | Metrics / Checks | Pass Criteria | Final Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| App quality gate | Latest app commit | App workflow `ci` or `publish-image` | Quality logs | lint, typecheck, unit tests | All pass | Valid candidate run `29983090390`; rerun after experiment utility changes |
-| SAST | Latest app commit | CodeQL in app workflow | CodeQL result | high/critical findings | No untriaged high/critical | Valid baseline; rerun for final package |
-| SCA | `package-lock.json` | npm audit gate | `npm-audit.json` | known vulnerabilities | No unaccepted high/critical | Valid baseline; rerun for final package |
-| Container scan | Docker image | Trivy image scan | `trivy-image.txt` | high/critical CVEs | No untriaged high/critical | Valid baseline; rerun if image changes |
-| Image publish | Immutable app commit SHA | App workflow `publish-image` | `published-image` and attestation | image digest and source SHA | Terraform input uses digest URI | Valid candidate run `29983090390`; republish after automation changes |
-| ECR bootstrap | Terraform ECR module | Terraform target/minimal apply before image publish | ECR repository URL | repo exists and image tag can be pushed | ECR available before full ECS apply | Valid bootstrap; ECR retained |
-| IaC quality gate | Infra commit | Terraform workflow scan job | `terraform-security-evidence` | fmt, validate, TFLint, Trivy, Checkov | All gates pass with documented exact suppressions | Valid candidate run `29983467498`; rerun after automation changes |
-| Terraform plan | Final GitHub vars/secrets | Terraform workflow `action=plan` or apply run plan job | `terraform-plan-review/tfplan.txt` | add/change/destroy summary, critical resources | No unexpected destroy/replacement | Valid candidate run `29983467498`: `139/0/0`; rerun required |
-| Terraform apply | Reviewed plan from same run | Terraform workflow `action=apply` | apply log and `post-apply-verification` | drift, AWS resources, runtime checks | All required checks PASS | Valid baseline run `28765301534`; rerun for final package if needed |
-| AWS actual verification | Terraform outputs | `scripts/verify-aws-post-apply.sh` plus manual review | verification JSON files | VPC, ALB, ECS, RDS, RDS Proxy, S3, CloudFront, WAF | State matches AWS actual resources | Valid baseline; manual evidence incomplete |
-| Runtime smoke | Live app domain | curl checks | `smoke-status.txt`, health/readiness JSON | HTTPS, HTTP redirect, health, readiness | Expected 200/redirect and JSON `status=ok` | Automation prepared; live evidence missing |
-| Functional checks | Isolated temporary users and ECS fixture task | Playwright | Playwright JSON/HTML, failure-only screenshots | login roles, public upload, private object authorization | All assertions pass and fixture cleanup passes | Automation prepared; live evidence missing |
-| DAST | Live HTTPS domain | Bounded ZAP Automation Framework | ZAP JSON/HTML and normalized summary | alerts by risk and unique rule | No untriaged high risk; medium reviewed | Automation prepared; live evidence missing |
-| Load test | Public read-only endpoints | k6 smoke plus staged 10/25/50 VU, three trials | trial summary JSON | errors, checks, p50/p95/p99, throughput | Error `<1%`, checks `>99%`, p95 `<1000ms` | Automation prepared; live evidence missing |
-| Monitoring evidence | Bounded runtime test window | AWS CLI/CloudWatch collector | normalized metric series and AWS snapshots | ALB, ECS, ASG, RDS, WAF, logs | Window and resource provenance match experiment | Automation prepared; live evidence missing |
-| Canonical aggregation | All artifacts with one experiment ID | Evidence aggregator and JSON Schema validator | `experiment-evidence.json`, manifest | workflow provenance, completeness, zero-residual database/S3 cleanup, three trials, CloudWatch core series, checksum | Status `final`; no stale, failed, partial, missing, or residual experiment data | Local schema/unit validation passed; live evidence missing |
-| Destroy | Evidence already captured | Terraform workflow `action=destroy` | `post-destroy-verification` | state empty, costly resources gone | PASS and no costly leftovers | Valid run `28767137374` |
+| App quality and security gates | App commit final | App workflow `publish-image` | Quality logs, CodeQL, npm audit, SBOM, Trivy, attestation | job conclusions, CVE/findings, digest | Semua gate wajib sukses; tidak ada high/critical tanpa triage | Run `30056560034`, passed |
+| Image publish | App commit final | Publish ke ECR melalui OIDC | `published-image` | source SHA dan digest | Terraform memakai digest immutable yang sama | Run `30056560034`, digest `sha256:eb54f55d...` |
+| IaC quality and security gates | Infra commit final | Terraform workflow | `terraform-security-evidence` | fmt, validate, TFLint, Trivy IaC, Checkov | Semua gate sukses dengan suppression terdokumentasi | Run `30057073750`, passed |
+| Terraform rollout plan | GitHub vars/secrets final dan image digest | Plan dari run apply yang sama | `terraform-plan-review` | create/update/delete/replace, duration | Tidak ada perubahan tidak terduga; plan direview sebelum approval | Run `30057073750`, plan 34 detik |
+| Terraform apply and migration | Saved plan yang direview | Environment approval, apply, one-off Prisma migration | apply timing dan `migration-evidence` | apply/migration status dan duration | Apply dan migration sukses | Run `30057073750`: apply 20 detik, migration 46 detik |
+| AWS actual verification | Terraform state/output dan AWS aktual | `scripts/verify-aws-post-apply.sh` | `post-apply-verification` | VPC, ALB, WAF, ECS, RDS Proxy/RDS, S3, CloudFront, health/readiness | Semua required check PASS | Run `30057073750`, verification 156 detik |
+| Functional and authorization | Fixture user/store/data terisolasi | Playwright | JSON/HTML report dan failure-only screenshot | expected, unexpected, flaky, skipped, duration | Unexpected 0; cleanup fixture lulus | Run `30057455143`: 1 expected, 0 unexpected |
+| DAST | Domain HTTPS milik project | ZAP passive baseline dan bounded active allowlist | ZAP JSON/HTML dan normalized summary | alert per severity, unique rules, blocking list | Tidak ada high/blocking yang belum ditriage | Run `30057455143`: 0 high, 4 medium, 3 low, 2 informational |
+| Regular load test | Endpoint publik read-only; baseline 2 VU dan peak 3 VU | Tiga trial k6 identik | Tiga summary JSON | requests, failure, checks, p50/p95, throughput | Failure `<1%`, checks `>99%`, p95 `<1000 ms`; 3/3 trial lulus | Run `30057455143`: median p95 296.113 ms, throughput 2.714 req/s, failure 0% |
+| WAF rate-limit detection | Request burst terkontrol pada domain milik project | Recovery trial terpisah dari profil performa | k6 failure evidence dan WAF sampled request | 429/block count dan rule | WAF rate rule menghasilkan block; hasil tidak dicampur dengan performa reguler | Run `30055597919`, confirmed WAF 429 |
+| Monitoring | Window eksperimen yang sama | CloudWatch/AWS collector | normalized series dan AWS snapshots | ALB, ECS, ASG, RDS, WAF, app errors | Core series tersedia dan provenance cocok | Run `30057455143`, collected; app error events 0 |
+| Cleanup and conformance | Fixture experiment ID | Cleanup task dan schema validation | cleanup JSON dan conformance report | residual DB/S3, passed/failed checks | Semua residual 0 dan conformance failed 0 | Run `30057455143`: 42 passed, 0 failed |
+| Canonical aggregation | Semua artifact dari lineage final | Aggregator, JSON Schema, manifest hash | `experiment-evidence.json` | provenance, completeness, trial aggregate, checksum | Status `final`; app/infra/image/run ID konsisten | Reprocess run `30060088000`, status final |
+| Dashboard import | Canonical JSON final | `pnpm evidence:import`, typecheck, lint, build | Local generated data | schema and rendering build | Import dan seluruh validation lulus | Local validation passed |
+| Controlled destroy | Evidence final sudah diamankan | Terraform `action=destroy` dengan reviewed plans | plan review dan `post-destroy-verification` | state empty dan audit resource berbiaya | State kosong; workload mahal tidak tersisa | Final run `30063265875`, passed |
 
 ## Deferred Items Not For BAB 4 Claims
 
-- CloudFront WAF/access logging, origin failover, geo restriction, and default
-  root object.
-- DNSSEC and public hosted zone query logging.
+- Perbandingan deployment manual berpasangan.
+- DDoS atau request flooding.
+- GuardDuty dan Security Hub.
+- Multi-region disaster recovery.
+- CloudFront WAF/access logging, origin failover, dan geo restriction.
+- DNSSEC dan public hosted-zone query logging.
 - Secrets Manager automatic rotation.
-- Customer-managed KMS for every log group, bucket, and SNS topic.
-- GuardDuty and Security Hub.
+- Customer-managed KMS untuk setiap log group dan SNS topic.
