@@ -239,6 +239,12 @@ resource "aws_ecs_service" "app" {
     aws_lb_listener.https
   ]
 
+  # ECS can remain DRAINING while ALB targets and capacity-provider tasks are
+  # deregistered during a controlled teardown.
+  timeouts {
+    delete = "45m"
+  }
+
   tags = {
     Name = "${var.project_name}-service"
   }
