@@ -258,6 +258,40 @@ jobs:
         with:
           name: terraform-saved-plan
           path: ${{ env.TF_WORKING_DIR }}
+      - name: Disable workload deletion protection
+        if: inputs.action == 'destroy'
+        shell: bash
+        run: |
+          DB_IDENTIFIER="${TF_VAR_project_name}-dev-db"
+          if aws rds describe-db-instances \
+            --db-instance-identifier "$DB_IDENTIFIER" \
+            >/dev/null 2>&1; then
+            aws rds modify-db-instance \
+              --db-instance-identifier "$DB_IDENTIFIER" \
+              --no-deletion-protection \
+              --apply-immediately \
+              >/dev/null
+            aws rds wait db-instance-available \
+              --db-instance-identifier "$DB_IDENTIFIER"
+            echo "Disabled deletion protection for RDS $DB_IDENTIFIER."
+          else
+            echo "RDS instance $DB_IDENTIFIER is already absent."
+          fi
+
+          ALB_NAME="${TF_VAR_project_name}-alb"
+          ALB_ARN="$(aws elbv2 describe-load-balancers \
+            --names "$ALB_NAME" \
+            --query 'LoadBalancers[0].LoadBalancerArn' \
+            --output text 2>/dev/null || true)"
+          if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ]; then
+            aws elbv2 modify-load-balancer-attributes \
+              --load-balancer-arn "$ALB_ARN" \
+              --attributes Key=deletion_protection.enabled,Value=false \
+              >/dev/null
+            echo "Disabled deletion protection for ALB $ALB_NAME."
+          else
+            echo "ALB $ALB_NAME is already absent."
+          fi
       - name: Empty ECR before controlled destroy
         if: inputs.action == 'destroy'
         shell: bash
