@@ -258,6 +258,34 @@ jobs:
         with:
           name: terraform-saved-plan
           path: ${{ env.TF_WORKING_DIR }}
+      - name: Empty ECR before controlled destroy
+        if: inputs.action == 'destroy'
+        shell: bash
+        run: |
+          REPOSITORY_NAME="${TF_VAR_project_name}-repo"
+          if ! aws ecr describe-repositories \
+            --repository-names "$REPOSITORY_NAME" \
+            >/dev/null 2>&1; then
+            echo "ECR repository $REPOSITORY_NAME is already absent."
+            exit 0
+          fi
+
+          aws ecr list-images \
+            --repository-name "$REPOSITORY_NAME" \
+            --query 'imageIds' \
+            --output json > ecr-image-ids.json
+
+          IMAGE_COUNT="$(jq 'length' ecr-image-ids.json)"
+          if [ "$IMAGE_COUNT" -eq 0 ]; then
+            echo "ECR repository $REPOSITORY_NAME is already empty."
+            exit 0
+          fi
+
+          aws ecr batch-delete-image \
+            --repository-name "$REPOSITORY_NAME" \
+            --image-ids file://ecr-image-ids.json \
+            >/dev/null
+          echo "Deleted $IMAGE_COUNT image references from $REPOSITORY_NAME."
       - name: Apply reviewed plan
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
