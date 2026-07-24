@@ -314,6 +314,7 @@ jobs:
           set -euo pipefail
           echo "LOAD_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
           mkdir -p runtime-evidence/k6
+          chmod 0777 runtime-evidence/k6
           LOAD_TRIALS=3
           for trial in $(seq 1 "$LOAD_TRIALS"); do
             docker run --rm \
