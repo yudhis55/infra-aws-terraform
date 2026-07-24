@@ -286,6 +286,7 @@ jobs:
       - name: Bounded passive and active OWASP ZAP scan
         working-directory: app-source
         run: |
+          chmod 0777 runtime-evidence
           node scripts/render-zap-plan.mjs "$APP_URL" runtime-evidence/zap-plan.yaml
           docker run --rm \
             -v "$PWD:/zap/wrk:rw" \
@@ -360,11 +361,11 @@ jobs:
           REMAINING_PUBLIC="$(aws s3api list-objects-v2 \
             --bucket "$PUBLIC_BUCKET" \
             --prefix "products/$SELLER_ID/" \
-            --query 'KeyCount' --output text)"
+            --query 'length(Contents || `[]`)' --output text)"
           REMAINING_PRIVATE="$(aws s3api list-objects-v2 \
             --bucket "$PRIVATE_BUCKET" \
             --prefix "payments/$BUYER_ID/" \
-            --query 'KeyCount' --output text)"
+            --query 'length(Contents || `[]`)' --output text)"
           test "$REMAINING_PUBLIC" = "0"
           test "$REMAINING_PRIVATE" = "0"
           jq -n \
