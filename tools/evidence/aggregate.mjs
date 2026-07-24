@@ -128,7 +128,7 @@ export function aggregate(rawDir, environment = process.env) {
       githubRunIds: {
         appPublish: environment.APP_PUBLISH_RUN_ID ?? null,
         terraformApply: environment.TERRAFORM_APPLY_RUN_ID ?? null,
-        experiment: environment.GITHUB_RUN_ID ?? null,
+        experiment: environment.SOURCE_EXPERIMENT_RUN_ID ?? environment.GITHUB_RUN_ID ?? null,
       },
     },
     ...sections,
@@ -176,18 +176,28 @@ function readK6Trials(directory) {
       const thresholds = Object.values(metrics).flatMap((metric) =>
         Object.values(metric.thresholds ?? {}),
       );
+      const values = (metric) => metric?.values ?? metric ?? {};
       return {
         trial: Number(name.match(/\d+/)?.[0]),
-        status: thresholds.every((threshold) => threshold.ok !== false) ? "passed" : "failed",
-        requests: metrics.http_reqs?.values?.count ?? null,
-        failureRate: metrics.http_req_failed?.values?.rate ?? null,
-        checksRate: metrics.checks?.values?.rate ?? null,
-        p50Ms: metrics.http_req_duration?.values?.["p(50)"] ?? null,
-        p95Ms: metrics.http_req_duration?.values?.["p(95)"] ?? null,
-        p99Ms: metrics.http_req_duration?.values?.["p(99)"] ?? null,
-        throughputRps: metrics.http_reqs?.values?.rate ?? null,
+        status: thresholds.every(thresholdPassed) ? "passed" : "failed",
+        requests: values(metrics.http_reqs).count ?? null,
+        failureRate:
+          values(metrics.http_req_failed).rate ?? values(metrics.http_req_failed).value ?? null,
+        checksRate: values(metrics.checks).rate ?? values(metrics.checks).value ?? null,
+        p50Ms:
+          values(metrics.http_req_duration)["p(50)"] ??
+          values(metrics.http_req_duration).med ??
+          null,
+        p95Ms: values(metrics.http_req_duration)["p(95)"] ?? null,
+        p99Ms: values(metrics.http_req_duration)["p(99)"] ?? null,
+        throughputRps: values(metrics.http_reqs).rate ?? null,
       };
     });
+}
+
+function thresholdPassed(threshold) {
+  if (typeof threshold === "boolean") return threshold === false;
+  return threshold?.ok !== false;
 }
 
 function summarizeTrials(trials) {

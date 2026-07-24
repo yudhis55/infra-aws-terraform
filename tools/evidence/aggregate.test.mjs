@@ -50,6 +50,33 @@ test("normalizes k6 trial metrics and computes medians", () => {
   assert.equal(result.runtime.metrics.aggregate.trialCount, 3);
 });
 
+test("normalizes current flat k6 summary metrics", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "eepistore-evidence-"));
+  fs.mkdirSync(path.join(directory, "k6"));
+  for (const trial of [1, 2, 3]) {
+    fs.writeFileSync(
+      path.join(directory, "k6", `trial-${trial}.json`),
+      JSON.stringify({
+        metrics: {
+          http_reqs: { count: 1470, rate: 2.7 },
+          http_req_failed: { value: 0, thresholds: { "rate<0.01": false } },
+          checks: { value: 1, thresholds: { "rate>0.99": false } },
+          http_req_duration: {
+            med: 250,
+            "p(95)": 300,
+            thresholds: { "p(95)<1000": false },
+          },
+        },
+      }),
+    );
+  }
+  const result = aggregate(directory, environment);
+  assert.equal(result.runtime.status, "passed");
+  assert.equal(result.runtime.metrics.trials[0].requests, 1470);
+  assert.equal(result.runtime.metrics.aggregate.medianP95Ms, 300);
+  assert.equal(result.runtime.metrics.aggregate.medianFailureRate, 0);
+});
+
 test("does not mark a single successful k6 trial as final runtime evidence", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "eepistore-evidence-"));
   fs.mkdirSync(path.join(directory, "k6"));

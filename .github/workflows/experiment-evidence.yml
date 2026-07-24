@@ -8,7 +8,7 @@ on:
         required: true
         default: role-preflight
         type: choice
-        options: [role-preflight, full-experiment]
+        options: [role-preflight, full-experiment, reprocess-evidence]
       app_commit_sha:
         description: Full app commit SHA used to build the deployed image
         required: false
@@ -29,6 +29,10 @@ on:
         description: Terraform-created HTTPS application URL
         required: true
         default: https://eepistore.web.id
+        type: string
+      source_experiment_run_id:
+        description: Completed experiment run to reprocess without repeating runtime traffic
+        required: false
         type: string
 
 permissions:
@@ -401,4 +405,69 @@ jobs:
           path: |
             experiment-evidence
             app-source/playwright-report
+          retention-days: 90
+
+  reprocess-evidence:
+    name: Reprocess Immutable Experiment Evidence
+    if: inputs.mode == 'reprocess-evidence'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6.0.2
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: tools/evidence/package-lock.json
+
+      - name: Download immutable source artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_experiment_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]]
+          gh run download "$SOURCE_RUN_ID" \
+            --repo "${{ github.repository }}" \
+            --name "final-experiment-evidence-$SOURCE_RUN_ID" \
+            --dir source-evidence
+
+      - name: Restore original experiment provenance
+        env:
+          SOURCE_RUN_ID: ${{ inputs.source_experiment_run_id }}
+        run: |
+          set -euo pipefail
+          CANONICAL="source-evidence/experiment-evidence/experiment-evidence.json"
+          test -f "$CANONICAL"
+          {
+            echo "EXPERIMENT_ID=$(jq -r '.metadata.experimentId' "$CANONICAL")"
+            echo "AWS_REGION=$(jq -r '.metadata.region' "$CANONICAL")"
+            echo "APP_URL=$(jq -r '.metadata.targetUrl' "$CANONICAL")"
+            echo "EXPERIMENT_STARTED_AT=$(jq -r '.metadata.startedAt' "$CANONICAL")"
+            echo "EXPERIMENT_ENDED_AT=$(jq -r '.metadata.endedAt' "$CANONICAL")"
+            echo "APP_COMMIT_SHA=$(jq -r '.provenance.appCommit' "$CANONICAL")"
+            echo "INFRA_COMMIT_SHA=$(jq -r '.provenance.infraCommit' "$CANONICAL")"
+            echo "APP_IMAGE_DIGEST=$(jq -r '.provenance.imageDigest' "$CANONICAL")"
+            echo "APP_PUBLISH_RUN_ID=$(jq -r '.provenance.githubRunIds.appPublish' "$CANONICAL")"
+            echo "TERRAFORM_APPLY_RUN_ID=$(jq -r '.provenance.githubRunIds.terraformApply' "$CANONICAL")"
+            echo "SOURCE_EXPERIMENT_RUN_ID=$SOURCE_RUN_ID"
+          } >> "$GITHUB_ENV"
+
+      - name: Rebuild and validate canonical evidence
+        run: |
+          npm ci --prefix tools/evidence
+          node tools/evidence/aggregate.mjs \
+            source-evidence/experiment-evidence \
+            source-evidence/experiment-evidence/experiment-evidence.json
+
+      - name: Upload corrected canonical and raw evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reprocessed-final-experiment-evidence-${{ inputs.source_experiment_run_id }}
+          path: source-evidence
+          if-no-files-found: error
           retention-days: 90
