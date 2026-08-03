@@ -12,8 +12,8 @@ berhasil dibuat.
 - AWS credentials tersedia melalui GitHub OIDC atau profile lokal yang sah.
 - Terraform sudah memakai remote backend.
 - Domain dan ACM DNS validation sudah selesai.
-- Container image sudah dipush ke ECR dengan immutable commit SHA dan nilai URI
-  image tersebut diberikan ke Terraform sebagai `app_image_uri`.
+- Container image sudah dipush ke ECR, digest immutable telah diverifikasi, dan
+  URI berbasis digest diberikan ke Terraform sebagai `app_image_uri`.
 
 ## Langkah Verifikasi
 
@@ -45,7 +45,8 @@ berhasil dibuat.
    - ECS service stabil.
    - Task berjalan di private app subnet atau ECS instances lintas AZ.
    - Target group healthy.
-   - Image task definition memakai tag commit SHA, bukan hanya `latest`.
+   - Image task definition memakai exact ECR digest yang dibekukan untuk
+     campaign, bukan `latest` atau tag mutable.
 
 6. Cek database.
    - RDS tidak public.

@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eepistore.web.id/schema/experiment-evidence-2.0.0.json",
+  "title": "Eepistore research campaign evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "status",
+    "campaign",
+    "delivery",
+    "faultInjection",
+    "security",
+    "functional",
+    "wafRateProtection",
+    "networkIsolation",
+    "scalability",
+    "monitoring",
+    "cleanup",
+    "conformance",
+    "baseline",
+    "limitations",
+    "manifestSha256"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "2.0.0" },
+    "status": {
+      "enum": ["draft", "running", "final", "partial", "failed", "incomplete", "stale"]
+    },
+    "campaign": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "campaignId",
+        "region",
+        "targetUrl",
+        "startedAt",
+        "endedAt",
+        "primaryLineage",
+        "cycles",
+        "childFaultLineages"
+      ],
+      "properties": {
+        "campaignId": { "type": "string", "minLength": 6 },
+        "region": { "type": "string", "minLength": 3 },
+        "targetUrl": { "type": "string", "format": "uri" },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "endedAt": { "type": ["string", "null"], "format": "date-time" },
+        "primaryLineage": { "$ref": "#/$defs/lineage" },
+        "cycles": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cycleR", "cycleF"],
+          "properties": {
+            "cycleR": { "$ref": "#/$defs/cycle" },
+            "cycleF": { "$ref": "#/$defs/cycle" }
+          }
+        },
+        "childFaultLineages": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/faultLineage" }
+        }
+      }
+    },
+    "delivery": { "$ref": "#/$defs/section" },
+    "faultInjection": { "$ref": "#/$defs/section" },
+    "security": { "$ref": "#/$defs/section" },
+    "functional": { "$ref": "#/$defs/section" },
+    "wafRateProtection": { "$ref": "#/$defs/section" },
+    "networkIsolation": { "$ref": "#/$defs/section" },
+    "scalability": { "$ref": "#/$defs/section" },
+    "monitoring": { "$ref": "#/$defs/section" },
+    "cleanup": { "$ref": "#/$defs/section" },
+    "conformance": { "$ref": "#/$defs/section" },
+    "baseline": { "type": ["object", "null"] },
+    "limitations": { "type": "array", "items": { "type": "string" } },
+    "manifestSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  },
+  "$defs": {
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["appCommit", "infraCommit", "imageDigest", "inputDigest"],
+      "properties": {
+        "appCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "infraCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "imageDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "inputDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      }
+    },
+    "runIds": {
+      "type": "object",
+      "additionalProperties": { "type": ["string", "null"] }
+    },
+    "cycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cycleId", "runType", "runStatus", "inputDigest", "githubRunIds", "timings"],
+      "properties": {
+        "cycleId": { "enum": ["cycle-r", "cycle-f"] },
+        "runType": { "const": "baseline" },
+        "runStatus": {
+          "enum": ["passed", "failed", "partial", "invalid-fixture", "not-exercised"]
+        },
+        "inputDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "githubRunIds": { "$ref": "#/$defs/runIds" },
+        "timings": { "type": "object" },
+        "notes": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "faultLineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "faultId",
+        "severity",
+        "repository",
+        "mutatedCommit",
+        "patchDigest",
+        "workflowRunId",
+        "expectedControl",
+        "actualControl",
+        "runType",
+        "runStatus"
+      ],
+      "properties": {
+        "faultId": { "type": "string", "minLength": 3 },
+        "severity": { "enum": ["high", "critical"] },
+        "repository": { "enum": ["app", "infra"] },
+        "parentAppCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "parentInfraCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "mutatedCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "patchDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "workflowRunId": { "type": "string", "minLength": 1 },
+        "expectedControl": { "type": "string", "minLength": 1 },
+        "actualControl": { "type": "string", "minLength": 1 },
+        "runType": { "const": "fault" },
+        "runStatus": {
+          "enum": ["passed", "failed", "partial", "invalid-fixture", "not-exercised"]
+        }
+      },
+      "oneOf": [
+        {
+          "required": ["parentAppCommit"],
+          "properties": {
+            "repository": { "const": "app" },
+            "parentAppCommit": { "type": "string" }
+          }
+        },
+        {
+          "required": ["parentInfraCommit"],
+          "properties": {
+            "repository": { "const": "infra" },
+            "parentInfraCommit": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "section": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "metrics", "notes"],
+      "properties": {
+        "status": {
+          "enum": ["passed", "failed", "missing", "partial", "not-applicable", "not-exercised"]
+        },
+        "metrics": { "type": "object" },
+        "notes": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

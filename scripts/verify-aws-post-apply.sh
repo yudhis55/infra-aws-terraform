@@ -196,6 +196,10 @@ if [ -n "$cluster_name" ] && [ -n "$service_name" ]; then
   fi
 
   capture ecs-service aws ecs describe-services --cluster "$cluster_name" --services "$service_name"
+  capture ecs-scaling-policies aws application-autoscaling describe-scaling-policies \
+    --service-namespace ecs --resource-id "service/$cluster_name/$service_name"
+  assert_json ecs-scaling-policies-complete "$OUT_DIR/ecs-scaling-policies.json" \
+    '([.ScalingPolicies[].TargetTrackingScalingPolicyConfiguration.PredefinedMetricSpecification.PredefinedMetricType] | index("ECSServiceAverageCPUUtilization")) != null and ([.ScalingPolicies[].TargetTrackingScalingPolicyConfiguration.PredefinedMetricSpecification.PredefinedMetricType] | index("ECSServiceAverageMemoryUtilization")) != null and ([.ScalingPolicies[].TargetTrackingScalingPolicyConfiguration.PredefinedMetricSpecification.PredefinedMetricType] | index("ALBRequestCountPerTarget")) != null'
   aws ecs list-tasks --cluster "$cluster_name" --service-name "$service_name" > "$OUT_DIR/ecs-task-arns.json"
   task_arns="$(jq -r '.taskArns[]?' "$OUT_DIR/ecs-task-arns.json" | tr '\n' ' ')"
   if [ -n "$task_arns" ]; then
@@ -207,8 +211,12 @@ if [ -n "$cluster_name" ] && [ -n "$service_name" ]; then
         --task-definition "$task_definition_arn"
       assert_json ecs-read-only-root "$OUT_DIR/ecs-task-definition.json" \
         '.taskDefinition.containerDefinitions[] | select(.name == "app") | .readonlyRootFilesystem == true'
-      assert_json ecs-immutable-image "$OUT_DIR/ecs-task-definition.json" \
-        '.taskDefinition.containerDefinitions[] | select(.name == "app") | .image | test("@sha256:[0-9a-f]{64}$|:[0-9a-f]{40}$")'
+      deployed_image="$(jq -r '.taskDefinition.containerDefinitions[] | select(.name == "app") | .image' "$OUT_DIR/ecs-task-definition.json")"
+      if [ "$deployed_image" = "${TF_VAR_app_image_uri:-}" ] && [[ "$deployed_image" =~ @sha256:[0-9a-f]{64}$ ]]; then
+        log_status "PASS ecs-exact-immutable-image"
+      else
+        log_status "FAIL ecs-exact-immutable-image: deployed image does not match TF_VAR_app_image_uri digest"
+      fi
     fi
   else
     log_status "FAIL ecs-tasks: no running service tasks found"
@@ -266,6 +274,8 @@ if [ -n "$waf_web_acl_arn" ] && [ "$waf_web_acl_arn" != "null" ]; then
     capture waf-alb-association aws wafv2 get-web-acl-for-resource --resource-arn "$alb_arn"
     assert_json waf-attached-to-alb "$OUT_DIR/waf-alb-association.json" \
       '.WebACL.ARN != null'
+    assert_json waf-experiment-endpoint-default-deny "$OUT_DIR/waf-web-acl.json" \
+      '([.WebACL.Rules[].Name] | index("ExperimentEndpointPermanentDeny")) != null and ([.WebACL.Rules[].Name] | index("ExperimentRateLimit")) == null and ([.WebACL.Rules[].Name] | index("ExperimentPerformanceAllow")) == null'
   fi
 fi
 
@@ -279,6 +289,12 @@ fi
 if [ -n "$application_url" ]; then
   verify_json_endpoint "health" "$application_url/api/health"
   verify_json_endpoint "readiness" "$application_url/api/readiness"
+  experiment_status="$(curl --silent --show-error --max-time 30 --output "$OUT_DIR/experiment-endpoint-deny.json" --write-out "%{http_code}" "$application_url/api/experiment/rate-limit" || true)"
+  if [ "$experiment_status" = "403" ]; then
+    log_status "PASS runtime-experiment-endpoint-default-deny"
+  else
+    log_status "FAIL runtime-experiment-endpoint-default-deny: HTTP $experiment_status"
+  fi
 fi
 
 if [ "$failures" -gt 0 ]; then

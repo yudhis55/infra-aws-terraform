@@ -289,3 +289,22 @@ resource "aws_appautoscaling_policy" "memory_scaling" {
     target_value = 80.0
   }
 }
+
+resource "aws_appautoscaling_policy" "request_scaling" {
+  name               = "${var.project_name}-request-scaling"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.ecs_service.resource_id
+  scalable_dimension = aws_appautoscaling_target.ecs_service.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.ecs_service.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ALBRequestCountPerTarget"
+      resource_label         = "${aws_lb.main.arn_suffix}/${aws_lb_target_group.ecs_ec2.arn_suffix}"
+    }
+
+    target_value       = var.service_request_count_target
+    scale_out_cooldown = 60
+    scale_in_cooldown  = 300
+  }
+}

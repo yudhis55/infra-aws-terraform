@@ -81,10 +81,193 @@ resource "aws_wafv2_web_acl" "main" {
     }
   }
 
+  dynamic "rule" {
+    for_each = var.experiment_mode == "performance" ? [1] : []
+    content {
+      name     = "ExperimentPerformanceAllow"
+      priority = 4
+
+      action {
+        allow {}
+      }
+
+      statement {
+        and_statement {
+          statement {
+            ip_set_reference_statement {
+              arn = aws_wafv2_ip_set.experiment_source[0].arn
+            }
+          }
+          statement {
+            or_statement {
+              statement {
+                byte_match_statement {
+                  positional_constraint = "EXACTLY"
+                  search_string         = "/products"
+                  field_to_match {
+                    uri_path {}
+                  }
+                  text_transformation {
+                    priority = 0
+                    type     = "NONE"
+                  }
+                }
+              }
+              statement {
+                byte_match_statement {
+                  positional_constraint = "EXACTLY"
+                  search_string         = "/api/health"
+                  field_to_match {
+                    uri_path {}
+                  }
+                  text_transformation {
+                    priority = 0
+                    type     = "NONE"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      visibility_config {
+        cloudwatch_metrics_enabled = true
+        metric_name                = "ExperimentPerformanceAllowMetric"
+        sampled_requests_enabled   = true
+      }
+    }
+  }
+
+  dynamic "rule" {
+    for_each = var.experiment_mode == "rate-test" ? [1] : []
+    content {
+      name     = "ExperimentRateLimit"
+      priority = 5
+
+      action {
+        block {
+          custom_response {
+            response_code = 429
+          }
+        }
+      }
+
+      statement {
+        rate_based_statement {
+          limit                 = var.experiment_rate_limit
+          aggregate_key_type    = "IP"
+          evaluation_window_sec = 60
+          scope_down_statement {
+            and_statement {
+              statement {
+                ip_set_reference_statement {
+                  arn = aws_wafv2_ip_set.experiment_source[0].arn
+                }
+              }
+              statement {
+                byte_match_statement {
+                  positional_constraint = "EXACTLY"
+                  search_string         = "/api/experiment/rate-limit"
+                  field_to_match {
+                    uri_path {}
+                  }
+                  text_transformation {
+                    priority = 0
+                    type     = "NONE"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      visibility_config {
+        cloudwatch_metrics_enabled = true
+        metric_name                = "ExperimentRateLimitMetric"
+        sampled_requests_enabled   = true
+      }
+    }
+  }
+
+  dynamic "rule" {
+    for_each = var.experiment_mode == "rate-test" ? [1] : []
+    content {
+      name     = "ExperimentRateUnderLimitAllow"
+      priority = 6
+      action {
+        allow {}
+      }
+
+      statement {
+        and_statement {
+          statement {
+            ip_set_reference_statement {
+              arn = aws_wafv2_ip_set.experiment_source[0].arn
+            }
+          }
+          statement {
+            byte_match_statement {
+              positional_constraint = "EXACTLY"
+              search_string         = "/api/experiment/rate-limit"
+              field_to_match {
+                uri_path {}
+              }
+              text_transformation {
+                priority = 0
+                type     = "NONE"
+              }
+            }
+          }
+        }
+      }
+
+      visibility_config {
+        cloudwatch_metrics_enabled = true
+        metric_name                = "ExperimentRateUnderLimitAllowMetric"
+        sampled_requests_enabled   = true
+      }
+    }
+  }
+
+  rule {
+    name     = "ExperimentEndpointPermanentDeny"
+    priority = 7
+
+    action {
+      block {
+        custom_response {
+          response_code = 403
+        }
+      }
+    }
+
+    statement {
+      byte_match_statement {
+        positional_constraint = "EXACTLY"
+        search_string         = "/api/experiment/rate-limit"
+        field_to_match {
+          uri_path {}
+        }
+        text_transformation {
+          priority = 0
+          type     = "NONE"
+        }
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "ExperimentEndpointPermanentDenyMetric"
+      sampled_requests_enabled   = true
+    }
+  }
+
   # ==================== Rate Limiting ====================
   rule {
     name     = "RateLimitingRule"
-    priority = 4
+    priority = 8
 
     action {
       block {
@@ -111,7 +294,7 @@ resource "aws_wafv2_web_acl" "main" {
   # ==================== IP Reputation List ====================
   rule {
     name     = "AWSManagedRulesAmazonIpReputationList"
-    priority = 5
+    priority = 9
 
     override_action {
       none {}
@@ -148,6 +331,20 @@ resource "aws_wafv2_web_acl_association" "alb" {
   count        = var.enable_waf ? 1 : 0
   resource_arn = var.alb_arn
   web_acl_arn  = aws_wafv2_web_acl.main[0].arn
+}
+
+resource "aws_wafv2_ip_set" "experiment_source" {
+  count              = var.enable_waf && var.experiment_mode != "off" ? 1 : 0
+  name               = "${var.project_name}-experiment-source"
+  description        = "Temporary source allowlist for bounded thesis experiments"
+  scope              = "REGIONAL"
+  ip_address_version = "IPV4"
+  addresses          = ["${var.experiment_source_ipv4}/32"]
+
+  tags = {
+    Environment = var.environment
+    Temporary   = "true"
+  }
 }
 
 # ==================== CloudWatch Log Group untuk WAF ====================

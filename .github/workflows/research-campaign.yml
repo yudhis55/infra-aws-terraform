@@ -1,0 +1,484 @@
+name: Research Campaign Runtime Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Non-mutating evidence phase; Terraform modes are approved separately
+        required: true
+        default: role-preflight
+        type: choice
+        options: [role-preflight, drift-inject, drift-emergency-rollback, waf-rate, runtime-suite]
+      campaign_id:
+        description: Frozen campaign ID
+        required: false
+        type: string
+      campaign_input_digest:
+        description: Frozen scientific input digest
+        required: false
+        type: string
+      experiment_expires_at:
+        description: UTC cleanup deadline copied from the approved agent plan
+        required: false
+        type: string
+      app_commit_sha:
+        description: Exact deployed application commit
+        required: false
+        type: string
+      image_digest:
+        description: Exact deployed image digest
+        required: false
+        type: string
+      app_publish_run_id:
+        description: Successful app image publish run
+        required: false
+        type: string
+      cycle_f_apply_run_id:
+        description: Successful Cycle F Terraform apply run
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: research-campaign-runtime
+  cancel-in-progress: false
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  TF_WORKING_DIR: env/dev
+  TF_VERSION: "1.14.4"
+  APP_URL: https://eepistore.web.id
+  AWS_REGION: ap-southeast-3
+
+jobs:
+  role-preflight:
+    if: inputs.mode == 'role-preflight'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ secrets.AWS_EXPERIMENT_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Verify OIDC boundary and read-only preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p preflight-evidence
+          account="$(aws sts get-caller-identity --query Account --output text)"
+          arn="$(aws sts get-caller-identity --query Arn --output text)"
+          test "$account" = "557947229844"
+          [[ "$arn" == arn:aws:sts::557947229844:assumed-role/eepistore-infra-experiment-role/* ]]
+          aws s3api get-bucket-location --bucket eepistore-dev-terraform-state > preflight-evidence/backend.json
+          jq -n --arg account "$account" --arg arn "$arn" '{status:"passed",accountId:$account,callerArn:$arn}' > preflight-evidence/result.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: research-role-preflight-${{ github.run_id }}
+          path: preflight-evidence
+          retention-days: 90
+
+  drift-control:
+    if: inputs.mode == 'drift-inject' || inputs.mode == 'drift-emergency-rollback'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      actions: write
+      contents: read
+      id-token: write
+    steps:
+      - name: Validate frozen drift inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${{ inputs.campaign_id }}" =~ ^campaign-[0-9]{8}-[0-9a-f]{7}-[0-9a-f]{7}$ ]]
+          [[ "${{ inputs.campaign_input_digest }}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "${{ inputs.app_commit_sha }}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${{ inputs.image_digest }}" =~ ^sha256:[0-9a-f]{64}$ ]]
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ secrets.AWS_EXPERIMENT_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Inject or roll back the exact controlled tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p campaign-evidence/conformance/drift
+          terraform -chdir="$TF_WORKING_DIR" init
+          test "$(terraform -chdir="$TF_WORKING_DIR" output -raw experiment_mode)" = agent
+          drift_role="$(terraform -chdir="$TF_WORKING_DIR" output -raw experiment_drift_role_arn)"
+          target_arn="$(terraform -chdir="$TF_WORKING_DIR" output -raw experiment_drift_target_arn)"
+          target_id="${target_arn##*/}"
+          credentials="$(aws sts assume-role --role-arn "$drift_role" --role-session-name "drift-$GITHUB_RUN_ID" --duration-seconds 900)"
+          access_key="$(jq -r .Credentials.AccessKeyId <<< "$credentials")"
+          secret_key="$(jq -r .Credentials.SecretAccessKey <<< "$credentials")"
+          session_token="$(jq -r .Credentials.SessionToken <<< "$credentials")"
+          aws_as_drift_role() {
+            AWS_ACCESS_KEY_ID="$access_key" AWS_SECRET_ACCESS_KEY="$secret_key" AWS_SESSION_TOKEN="$session_token" aws "$@"
+          }
+
+          aws ec2 describe-tags --filters "Name=resource-id,Values=$target_id" > campaign-evidence/conformance/drift/tags-before.json
+          if [ "${{ inputs.mode }}" = drift-emergency-rollback ]; then
+            aws_as_drift_role ec2 delete-tags --resources "$target_id" --tags Key=ExperimentDrift
+            action=emergency-rollback
+          else
+            existing="$(jq '[.Tags[] | select(.Key == "ExperimentDrift")] | length' campaign-evidence/conformance/drift/tags-before.json)"
+            test "$existing" -eq 0
+            aws_as_drift_role ec2 create-tags --resources "$target_id" --tags Key=ExperimentDrift,Value=controlled
+            action=injected
+          fi
+          aws ec2 describe-tags --filters "Name=resource-id,Values=$target_id" > campaign-evidence/conformance/drift/tags-after.json
+          if [ "$action" = injected ]; then
+            jq -e '[.Tags[] | select(.Key == "ExperimentDrift" and .Value == "controlled")] | length == 1' campaign-evidence/conformance/drift/tags-after.json > /dev/null
+            gh workflow run terraform-ci.yml --ref main \
+              -f action=experiment-drift-recovery \
+              -f campaign_id="${{ inputs.campaign_id }}" \
+              -f cycle_id=cycle-f \
+              -f campaign_input_digest="${{ inputs.campaign_input_digest }}" \
+              -f app_commit_sha="${{ inputs.app_commit_sha }}" \
+              -f image_digest="${{ inputs.image_digest }}" \
+              -f experiment_expires_at="${{ inputs.experiment_expires_at }}"
+          else
+            jq -e '[.Tags[] | select(.Key == "ExperimentDrift")] | length == 0' campaign-evidence/conformance/drift/tags-after.json > /dev/null
+          fi
+          jq -n \
+            --arg status passed \
+            --arg action "$action" \
+            --arg targetArn "$target_arn" \
+            --arg driftRoleArn "$drift_role" \
+            --arg runId "$GITHUB_RUN_ID" \
+            '{status:$status,action:$action,targetArn:$targetArn,tagKey:"ExperimentDrift",tagValue:(if $action == "injected" then "controlled" else null end),driftRoleArn:$driftRoleArn,githubRunId:$runId}' \
+            > campaign-evidence/conformance/drift/injection.json
+      - name: Upload controlled drift evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: campaign-drift-${{ inputs.mode }}-${{ github.run_id }}
+          path: campaign-evidence
+          if-no-files-found: error
+          retention-days: 90
+  waf-rate:
+    if: inputs.mode == 'waf-rate'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    permissions:
+      actions: write
+      contents: read
+      id-token: write
+    steps:
+      - name: Validate frozen inputs
+        shell: bash
+        run: |
+          [[ "${{ inputs.campaign_id }}" =~ ^campaign-[0-9]{8}-[0-9a-f]{7}-[0-9a-f]{7}$ ]]
+          [[ "${{ inputs.campaign_input_digest }}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "${{ inputs.app_commit_sha }}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${{ inputs.image_digest }}" =~ ^sha256:[0-9a-f]{64}$ ]]
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ secrets.AWS_EXPERIMENT_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - run: terraform -chdir="$TF_WORKING_DIR" init
+      - name: Verify reviewed rate-test state and permanent deny control
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p campaign-evidence/security
+          mode="$(terraform -chdir="$TF_WORKING_DIR" output -raw experiment_mode)"
+          test "$mode" = rate-test
+          instance="$(terraform -chdir="$TF_WORKING_DIR" output -raw experiment_agent_instance_id)"
+          test -n "$instance"
+          control_status="$(curl --silent --show-error --max-time 15 --output /dev/null --write-out '%{http_code}' "$APP_URL/api/experiment/rate-limit")"
+          test "$control_status" = 403
+          echo "INSTANCE_ID=$instance" >> "$GITHUB_ENV"
+          bash scripts/wait-for-experiment-agent.sh "$instance" "${{ inputs.campaign_id }}" campaign-evidence/agent-readiness
+      - name: Run bounded benign request sequence
+        shell: bash
+        run: |
+          echo "RATE_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          bash scripts/run-waf-rate-test.sh "$INSTANCE_ID" "${{ inputs.campaign_id }}" "$APP_URL/api/experiment/rate-limit" campaign-evidence/security/waf-rate
+          echo "RATE_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+      - name: Collect WAF metric and sampled requests
+        shell: bash
+        run: |
+          sleep 300
+          waf_arn="$(terraform -chdir="$TF_WORKING_DIR" output -raw waf_web_acl_arn)"
+          waf_name="$(terraform -chdir="$TF_WORKING_DIR" output -raw waf_web_acl_name)"
+          aws wafv2 get-sampled-requests --web-acl-arn "$waf_arn" --rule-metric-name ExperimentRateLimitMetric --scope REGIONAL --time-window "StartTime=$RATE_STARTED_AT,EndTime=$RATE_ENDED_AT" --max-items 100 > campaign-evidence/security/waf-rate/sampled.json
+          aws cloudwatch get-metric-statistics --namespace AWS/WAFV2 --metric-name BlockedRequests --dimensions "Name=WebACL,Value=$waf_name" "Name=Rule,Value=ExperimentRateLimit" "Name=Region,Value=$AWS_REGION" --start-time "$RATE_STARTED_AT" --end-time "$RATE_ENDED_AT" --period 60 --statistics Sum > campaign-evidence/security/waf-rate/metric.json
+          generator="$(cat campaign-evidence/security/waf-rate/generator-summary.json)"
+          blocked="$(jq '[.Datapoints[].Sum] | add // 0' campaign-evidence/security/waf-rate/metric.json)"
+          samples="$(jq '[.SampledRequests[] | select(.Request.URI == "/api/experiment/rate-limit" and .Action == "BLOCK")] | length' campaign-evidence/security/waf-rate/sampled.json)"
+          jq -n --argjson generator "$generator" --argjson blocked "$blocked" --argjson samples "$samples" \
+            '$generator + {metricBlockedRequests:$blocked,metricCorrelated:($blocked > 0),sampledBlockedRequests:$samples,sampleCorrelated:($samples > 0),scopeViolation:false,cleanupStatus:"pending"}' \
+            > campaign-evidence/security/waf-rate-protection.json
+          jq -e '.metricCorrelated and .sampleCorrelated and .blockedRequests == 1' campaign-evidence/security/waf-rate-protection.json > /dev/null
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: campaign-waf-rate-${{ github.run_id }}
+          path: campaign-evidence
+          if-no-files-found: error
+          retention-days: 90
+      - name: Dispatch reviewed cleanup after a failed bounded rate run
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run terraform-ci.yml --ref main \
+            -f action=experiment-cleanup \
+            -f campaign_id="${{ inputs.campaign_id }}" \
+            -f cycle_id=cycle-f \
+            -f campaign_input_digest="${{ inputs.campaign_input_digest }}" \
+            -f app_commit_sha="${{ inputs.app_commit_sha }}" \
+            -f image_digest="${{ inputs.image_digest }}" \
+            -f experiment_expires_at="${{ inputs.experiment_expires_at }}"
+
+  runtime-suite:
+    if: inputs.mode == 'runtime-suite'
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    environment: production
+    permissions:
+      actions: write
+      contents: read
+      id-token: write
+    env:
+      EXPERIMENT_ID: exp-${{ github.run_id }}-${{ github.run_attempt }}
+      EXPERIMENT_BUYER_EMAIL: buyer-exp-${{ github.run_id }}-${{ github.run_attempt }}@example.invalid
+      EXPERIMENT_OTHER_BUYER_EMAIL: other-buyer-exp-${{ github.run_id }}-${{ github.run_attempt }}@example.invalid
+      EXPERIMENT_SELLER_EMAIL: seller-exp-${{ github.run_id }}-${{ github.run_attempt }}@example.invalid
+      EXPERIMENT_OTHER_SELLER_EMAIL: other-seller-exp-${{ github.run_id }}-${{ github.run_attempt }}@example.invalid
+      EXPERIMENT_ADMIN_EMAIL: admin-exp-${{ github.run_id }}-${{ github.run_attempt }}@example.invalid
+    steps:
+      - name: Validate frozen lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${{ inputs.campaign_id }}" =~ ^campaign-[0-9]{8}-[0-9a-f]{7}-[0-9a-f]{7}$ ]]
+          [[ "${{ inputs.campaign_input_digest }}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "${{ inputs.app_commit_sha }}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${{ inputs.image_digest }}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "${{ inputs.app_publish_run_id }}" =~ ^[0-9]+$ ]]
+          [[ "${{ inputs.cycle_f_apply_run_id }}" =~ ^[0-9]+$ ]]
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: yudhis55/eepistore
+          ref: ${{ inputs.app_commit_sha }}
+          path: app-source
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ secrets.AWS_EXPERIMENT_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app-source/package-lock.json
+      - name: Initialize and verify performance experiment state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform -chdir="$TF_WORKING_DIR" init
+          test "$(terraform -chdir="$TF_WORKING_DIR" output -raw experiment_mode)" = performance
+          echo "INSTANCE_ID=$(terraform -chdir="$TF_WORKING_DIR" output -raw experiment_agent_instance_id)" >> "$GITHUB_ENV"
+          echo "AGENT_PRIVATE_IP=$(terraform -chdir="$TF_WORKING_DIR" output -raw experiment_agent_private_ip)" >> "$GITHUB_ENV"
+          echo "SUITE_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          mkdir -p campaign-evidence/{metadata,functional,security,runtime,monitoring,cleanup} app-source/runtime-evidence
+
+          cluster="$(terraform -chdir="$TF_WORKING_DIR" output -raw ecs_cluster_name)"
+          service="$(terraform -chdir="$TF_WORKING_DIR" output -raw ecs_service_name)"
+          repository="$(aws ecr describe-repositories --repository-names eepistore-repo --query 'repositories[0].repositoryUri' --output text)"
+          task_definition="$(aws ecs describe-services --cluster "$cluster" --services "$service" --query 'services[0].taskDefinition' --output text)"
+          deployed_image="$(aws ecs describe-task-definition --task-definition "$task_definition" --query 'taskDefinition.containerDefinitions[?name==`app`].image | [0]' --output text)"
+          expected_image="$repository@${{ inputs.image_digest }}"
+          test "$deployed_image" = "$expected_image"
+
+          aws ecr describe-images \
+            --repository-name "${repository##*/}" \
+            --image-ids imageDigest="${{ inputs.image_digest }}" \
+            > campaign-evidence/metadata/ecr-image.json
+          jq -e --arg commit "${{ inputs.app_commit_sha }}" '.imageDetails[0].imageTags | index($commit) != null' campaign-evidence/metadata/ecr-image.json > /dev/null
+          gh api "repos/yudhis55/eepistore/actions/runs/${{ inputs.app_publish_run_id }}" > campaign-evidence/metadata/app-publish-run.json
+          jq -e --arg commit "${{ inputs.app_commit_sha }}" '.conclusion == "success" and .head_sha == $commit' campaign-evidence/metadata/app-publish-run.json > /dev/null
+          gh api "repos/yudhis55/infra-aws-terraform/actions/runs/${{ inputs.cycle_f_apply_run_id }}" > campaign-evidence/metadata/cycle-f-apply-run.json
+          jq -e --arg commit "$GITHUB_SHA" '.conclusion == "success" and .head_sha == $commit' campaign-evidence/metadata/cycle-f-apply-run.json > /dev/null
+          jq -n \
+            --arg appCommit "${{ inputs.app_commit_sha }}" \
+            --arg imageDigest "${{ inputs.image_digest }}" \
+            --arg deployedImage "$deployed_image" \
+            --arg taskDefinition "$task_definition" \
+            --arg appPublishRunId "${{ inputs.app_publish_run_id }}" \
+            --arg cycleFApplyRunId "${{ inputs.cycle_f_apply_run_id }}" \
+            '{status:"passed",appCommit:$appCommit,imageDigest:$imageDigest,deployedImage:$deployedImage,taskDefinition:$taskDefinition,appPublishRunId:$appPublishRunId,cycleFApplyRunId:$cycleFApplyRunId}' \
+            > campaign-evidence/metadata/lineage-verification.json
+          bash scripts/wait-for-experiment-agent.sh "$(terraform -chdir="$TF_WORKING_DIR" output -raw experiment_agent_instance_id)" "${{ inputs.campaign_id }}" campaign-evidence/metadata/agent-readiness
+      - name: Install functional and DAST dependencies
+        working-directory: app-source
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Create isolated users and database fixture
+        shell: bash
+        run: |
+          password="$(openssl rand -base64 36 | tr -d '\n')Aa1"
+          echo "::add-mask::$password"
+          echo "EXPERIMENT_PASSWORD=$password" >> "$GITHUB_ENV"
+      - name: Register experiment users
+        working-directory: app-source
+        run: npx playwright test tests/e2e/bootstrap-users.spec.ts --reporter=line
+      - name: Prepare deterministic commerce fixture
+        run: |
+          bash scripts/run-experiment-fixture.sh "$TF_WORKING_DIR" setup campaign-evidence/functional
+          cp campaign-evidence/functional/fixture.json app-source/runtime-evidence/fixture.json
+      - name: Run role-aware functional and authorization tests
+        working-directory: app-source
+        env:
+          EXPERIMENT_FIXTURE_FILE: runtime-evidence/fixture.json
+        run: npx playwright test tests/e2e/functional.spec.ts
+      - name: Run bounded ZAP passive and active plan
+        working-directory: app-source
+        run: |
+          chmod 0777 runtime-evidence
+          node scripts/render-zap-plan.mjs "$APP_URL" runtime-evidence/zap-plan.yaml
+          docker run --rm -v "$PWD:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy@sha256:8d387b1a63e3425beef4846e39719f5af2a787753af2d8b6558c6257d7a577a2 zap.sh -cmd -autorun /zap/wrk/runtime-evidence/zap-plan.yaml
+          node scripts/zap-gate.mjs runtime-evidence/zap-report.json runtime-evidence/zap-summary.json tests/security/zap-triage.json
+          cp runtime-evidence/zap-summary.json ../campaign-evidence/security/zap-summary.json
+          cp runtime-evidence/playwright-results.json ../campaign-evidence/functional/playwright-results.json
+      - name: Build and execute the exact network target allowlist
+        shell: bash
+        run: |
+          rds="$(terraform -chdir="$TF_WORKING_DIR" output -raw rds_instance_address)"
+          proxy="$(terraform -chdir="$TF_WORKING_DIR" output -raw rds_proxy_endpoint)"
+          tg="$(terraform -chdir="$TF_WORKING_DIR" output -raw target_group_arn)"
+          target_id="$(aws elbv2 describe-target-health --target-group-arn "$tg" --query 'TargetHealthDescriptions[0].Target.Id' --output text)"
+          target_port="$(aws elbv2 describe-target-health --target-group-arn "$tg" --query 'TargetHealthDescriptions[0].Target.Port' --output text)"
+          target_ip="$(aws ec2 describe-instances --instance-ids "$target_id" --query 'Reservations[0].Instances[0].PrivateIpAddress' --output text)"
+          private_bucket="$(terraform -chdir="$TF_WORKING_DIR" output -raw s3_private_bucket_name)"
+          jq -n --arg rds "$rds" --arg proxy "$proxy" --arg target "$target_ip" --arg bucket "$private_bucket.s3.$AWS_REGION.amazonaws.com" --argjson port "$target_port" '{targets:[
+            {id:"public-health",host:"eepistore.web.id",port:443,attempts:1,control:"positive-network",expected:"success"},
+            {id:"rds-instance",host:$rds,port:5432,attempts:3,control:"vpc-network",expected:"denied"},
+            {id:"rds-proxy",host:$proxy,port:5432,attempts:3,control:"vpc-network",expected:"denied"},
+            {id:"ecs-dynamic-port",host:$target,port:$port,attempts:3,control:"vpc-network",expected:"denied"},
+            {id:"private-s3",host:$bucket,port:443,attempts:1,control:"storage-policy",expected:"http-403"}
+          ]}' > campaign-evidence/security/network-targets.json
+          echo "NETWORK_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          bash scripts/run-network-isolation.sh "$INSTANCE_ID" "${{ inputs.campaign_id }}" campaign-evidence/security/network-targets.json campaign-evidence/security/network-raw
+          echo "NETWORK_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+      - name: Correlate denied attempts with VPC Flow Logs
+        shell: bash
+        run: |
+          sleep 900
+          query_start="$(date -u -d "$NETWORK_STARTED_AT -1 minute" +%Y-%m-%dT%H:%M:%SZ)"
+          query_end="$(date -u -d "$NETWORK_ENDED_AT +15 minutes" +%Y-%m-%dT%H:%M:%SZ)"
+          bash scripts/collect-security-control-evidence.sh "$TF_WORKING_DIR" "$query_start" "$query_end" "$AGENT_PRIVATE_IP" campaign-evidence/security/network-correlation network-only
+          node tools/evidence/correlate-network.mjs campaign-evidence/security/network-raw/network-isolation.json campaign-evidence/security/network-correlation/flow-log-evidence.json campaign-evidence/security/network-isolation.json
+      - name: Run calibration and three locked final trials from the agent
+        shell: bash
+        run: |
+          set -euo pipefail
+          profile_digest="sha256:$(sha256sum experiments/profiles/final-load-profile.json | awk '{print $1}')"
+          for trial in calibration 1 2 3; do
+            run_type=final-trial
+            if [ "$trial" = calibration ]; then run_type=calibration; fi
+            jq --arg campaignId "${{ inputs.campaign_id }}" --arg trialId "$trial" --arg runType "$run_type" '. + {campaignId:$campaignId,trialId:$trialId,runType:$runType}' experiments/profiles/final-load-profile.json > "campaign-evidence/runtime/profile-$trial.json"
+            load_started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            bash scripts/collect-scaling-timeline.sh "$TF_WORKING_DIR" 2700 "campaign-evidence/runtime/scaling-$trial.json" 60 &
+            collector_pid=$!
+            set +e
+            bash scripts/run-k6-on-agent.sh "$INSTANCE_ID" "${{ inputs.campaign_id }}" "campaign-evidence/runtime/profile-$trial.json" app-source/tests/performance/load.js "campaign-evidence/runtime/agent-$trial"
+            run_code=$?
+            set -e
+            wait "$collector_pid"
+            load_ended="$(jq -r .ExecutionEndDateTime campaign-evidence/runtime/agent-$trial/invocation.json)"
+            ended_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            threshold_at="$(date -u -d "$load_started +5 minutes" +%Y-%m-%dT%H:%M:%SZ)"
+            jq -n --arg trialId "$trial" --arg runType "$run_type" --arg profileDigest "$profile_digest" --arg loadStartedAt "$load_started" --arg thresholdLoadStartedAt "$threshold_at" --arg loadEndedAt "$load_ended" --arg collectionEndedAt "$ended_at" '{trialId:$trialId,runType:$runType,profileDigest:$profileDigest,loadStartedAt:$loadStartedAt,thresholdLoadStartedAt:$thresholdLoadStartedAt,loadEndedAt:$loadEndedAt,collectionEndedAt:$collectionEndedAt}' > "campaign-evidence/runtime/metadata-$trial.json"
+            node tools/evidence/normalize-scale-trial.mjs "campaign-evidence/runtime/agent-$trial/summary.json" "campaign-evidence/runtime/scaling-$trial.json" "campaign-evidence/runtime/metadata-$trial.json" "campaign-evidence/runtime/normalized-$trial.json"
+            jq -e '.runStatus == "passed"' "campaign-evidence/runtime/normalized-$trial.json" > /dev/null
+            test "$run_code" -eq 0
+            if [ "$trial" != 3 ]; then sleep 600; fi
+          done
+          cp campaign-evidence/runtime/normalized-1.json campaign-evidence/runtime/scale-trial-1.json
+          cp campaign-evidence/runtime/normalized-2.json campaign-evidence/runtime/scale-trial-2.json
+          cp campaign-evidence/runtime/normalized-3.json campaign-evidence/runtime/scale-trial-3.json
+          jq -s '{asgStatus:(map(.asgStatus) | if any(. == "failed") then "failed" elif any(. == "observed-passed") then "observed-passed" else "not-exercised" end),asgActivities:[]}' campaign-evidence/runtime/scale-trial-{1,2,3}.json > campaign-evidence/runtime/scaling-events.json
+      - name: Collect CloudWatch and AWS runtime evidence
+        shell: bash
+        run: |
+          suite_end="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          bash scripts/collect-experiment-aws.sh "$TF_WORKING_DIR" "$SUITE_STARTED_AT" "$suite_end" campaign-evidence/monitoring
+      - name: Remove scoped S3 fixtures
+        if: always() && hashFiles('campaign-evidence/functional/fixture.json') != ''
+        shell: bash
+        run: |
+          public_bucket="$(terraform -chdir="$TF_WORKING_DIR" output -raw s3_public_bucket_name)"
+          private_bucket="$(terraform -chdir="$TF_WORKING_DIR" output -raw s3_private_bucket_name)"
+          seller="$(jq -r .users.sellerId campaign-evidence/functional/fixture.json)"
+          buyer="$(jq -r .users.buyerId campaign-evidence/functional/fixture.json)"
+          aws s3 rm "s3://$public_bucket/products/$seller/" --recursive
+          aws s3 rm "s3://$private_bucket/payments/$buyer/" --recursive
+          public_remaining="$(aws s3api list-objects-v2 --bucket "$public_bucket" --prefix "products/$seller/" --query 'length(Contents || `[]`)' --output text)"
+          private_remaining="$(aws s3api list-objects-v2 --bucket "$private_bucket" --prefix "payments/$buyer/" --query 'length(Contents || `[]`)' --output text)"
+          jq -n --argjson public "$public_remaining" --argjson private "$private_remaining" '{remainingPublicObjects:$public,remainingPrivateObjects:$private}' > campaign-evidence/cleanup/s3-cleanup.json
+      - name: Remove database fixtures
+        if: always() && env.EXPERIMENT_ID != ''
+        run: |
+          bash scripts/run-experiment-fixture.sh "$TF_WORKING_DIR" cleanup campaign-evidence/cleanup/database-task
+          cp campaign-evidence/cleanup/database-task/cleanup.json campaign-evidence/cleanup/database-cleanup.json
+      - name: Upload raw runtime campaign evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: campaign-runtime-${{ github.run_id }}
+          path: |
+            campaign-evidence
+            app-source/playwright-report
+          if-no-files-found: error
+          retention-days: 90
+      - name: Dispatch saved-plan cleanup for human review
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run terraform-ci.yml --ref main \
+            -f action=experiment-cleanup \
+            -f campaign_id="${{ inputs.campaign_id }}" \
+            -f cycle_id=cycle-f \
+            -f campaign_input_digest="${{ inputs.campaign_input_digest }}" \
+            -f app_commit_sha="${{ inputs.app_commit_sha }}" \
+            -f image_digest="${{ inputs.image_digest }}" \
+            -f experiment_expires_at="${{ inputs.experiment_expires_at }}"

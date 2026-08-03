@@ -82,6 +82,17 @@ variable "service_desired_count" {
   default     = 2
 }
 
+variable "service_request_count_target" {
+  description = "Average ALB requests per target per minute used by ECS target tracking"
+  type        = number
+  default     = 300
+
+  validation {
+    condition     = var.service_request_count_target >= 100 && var.service_request_count_target <= 1000
+    error_message = "service_request_count_target must remain between 100 and 1000 requests per target per minute."
+  }
+}
+
 # ==================== ECS Task Configuration ====================
 variable "ecs_task_cpu" {
   description = "CPU units for ECS task (256 = 0.25vCPU)"

@@ -31,13 +31,19 @@ jq -n \
   '[
     {Id:"albrequests",MetricStat:{Metric:{Namespace:"AWS/ApplicationELB",MetricName:"RequestCount",Dimensions:[{Name:"LoadBalancer",Value:$alb}]},Period:60,Stat:"Sum"},ReturnData:true},
     {Id:"albp95",MetricStat:{Metric:{Namespace:"AWS/ApplicationELB",MetricName:"TargetResponseTime",Dimensions:[{Name:"LoadBalancer",Value:$alb},{Name:"TargetGroup",Value:$tg}]},Period:60,Stat:"p95"},ReturnData:true},
-    {Id:"alb5xx",MetricStat:{Metric:{Namespace:"AWS/ApplicationELB",MetricName:"HTTPCode_Target_5XX_Count",Dimensions:[{Name:"LoadBalancer",Value:$alb}]},Period:60,Stat:"Sum"},ReturnData:true},
+    {Id:"alb4xx",MetricStat:{Metric:{Namespace:"AWS/ApplicationELB",MetricName:"HTTPCode_Target_4XX_Count",Dimensions:[{Name:"LoadBalancer",Value:$alb},{Name:"TargetGroup",Value:$tg}]},Period:60,Stat:"Sum"},ReturnData:true},
+    {Id:"alb5xx",MetricStat:{Metric:{Namespace:"AWS/ApplicationELB",MetricName:"HTTPCode_Target_5XX_Count",Dimensions:[{Name:"LoadBalancer",Value:$alb},{Name:"TargetGroup",Value:$tg}]},Period:60,Stat:"Sum"},ReturnData:true},
     {Id:"ecscpu",MetricStat:{Metric:{Namespace:"AWS/ECS",MetricName:"CPUUtilization",Dimensions:[{Name:"ClusterName",Value:$cluster},{Name:"ServiceName",Value:$service}]},Period:60,Stat:"Average"},ReturnData:true},
     {Id:"ecsmemory",MetricStat:{Metric:{Namespace:"AWS/ECS",MetricName:"MemoryUtilization",Dimensions:[{Name:"ClusterName",Value:$cluster},{Name:"ServiceName",Value:$service}]},Period:60,Stat:"Average"},ReturnData:true},
     {Id:"asginservice",MetricStat:{Metric:{Namespace:"AWS/AutoScaling",MetricName:"GroupInServiceInstances",Dimensions:[{Name:"AutoScalingGroupName",Value:$asg}]},Period:60,Stat:"Average"},ReturnData:true},
+    {Id:"asgdesired",MetricStat:{Metric:{Namespace:"AWS/AutoScaling",MetricName:"GroupDesiredCapacity",Dimensions:[{Name:"AutoScalingGroupName",Value:$asg}]},Period:60,Stat:"Average"},ReturnData:true},
+    {Id:"asgpending",MetricStat:{Metric:{Namespace:"AWS/AutoScaling",MetricName:"GroupPendingInstances",Dimensions:[{Name:"AutoScalingGroupName",Value:$asg}]},Period:60,Stat:"Average"},ReturnData:true},
+    {Id:"asgterminating",MetricStat:{Metric:{Namespace:"AWS/AutoScaling",MetricName:"GroupTerminatingInstances",Dimensions:[{Name:"AutoScalingGroupName",Value:$asg}]},Period:60,Stat:"Average"},ReturnData:true},
     {Id:"rdscpu",MetricStat:{Metric:{Namespace:"AWS/RDS",MetricName:"CPUUtilization",Dimensions:[{Name:"DBInstanceIdentifier",Value:$rds}]},Period:60,Stat:"Average"},ReturnData:true},
     {Id:"rdsconnections",MetricStat:{Metric:{Namespace:"AWS/RDS",MetricName:"DatabaseConnections",Dimensions:[{Name:"DBInstanceIdentifier",Value:$rds}]},Period:60,Stat:"Average"},ReturnData:true},
-    {Id:"wafblocked",MetricStat:{Metric:{Namespace:"AWS/WAFV2",MetricName:"BlockedRequests",Dimensions:[{Name:"WebACL",Value:$waf},{Name:"Rule",Value:"ALL"},{Name:"Region",Value:$region}]},Period:60,Stat:"Sum"},ReturnData:true}
+    {Id:"wafallowed",MetricStat:{Metric:{Namespace:"AWS/WAFV2",MetricName:"AllowedRequests",Dimensions:[{Name:"WebACL",Value:$waf},{Name:"Rule",Value:"ALL"},{Name:"Region",Value:$region}]},Period:60,Stat:"Sum"},ReturnData:true},
+    {Id:"wafblocked",MetricStat:{Metric:{Namespace:"AWS/WAFV2",MetricName:"BlockedRequests",Dimensions:[{Name:"WebACL",Value:$waf},{Name:"Rule",Value:"ALL"},{Name:"Region",Value:$region}]},Period:60,Stat:"Sum"},ReturnData:true},
+    {Id:"wafrateblocked",MetricStat:{Metric:{Namespace:"AWS/WAFV2",MetricName:"BlockedRequests",Dimensions:[{Name:"WebACL",Value:$waf},{Name:"Rule",Value:"ExperimentRateLimit"},{Name:"Region",Value:$region}]},Period:60,Stat:"Sum"},ReturnData:true}
   ]' > "$out_dir/metric-queries.json"
 
 aws cloudwatch get-metric-data \
@@ -49,6 +55,12 @@ aws cloudwatch get-metric-data \
 aws ecs describe-services --cluster "$cluster" --services "$service" > "$out_dir/ecs-service.json"
 aws autoscaling describe-auto-scaling-groups \
   --auto-scaling-group-names "$asg" > "$out_dir/asg.json"
+aws autoscaling describe-scaling-activities \
+  --auto-scaling-group-name "$asg" --max-records 100 > "$out_dir/asg-activities.json"
+aws application-autoscaling describe-scaling-activities \
+  --service-namespace ecs \
+  --resource-id "service/$cluster/$service" \
+  --max-results 50 > "$out_dir/ecs-scaling-activities.json"
 aws elbv2 describe-target-health --target-group-arn "$tg_arn" > "$out_dir/target-health.json"
 aws rds describe-db-instances --db-instance-identifier "$rds" > "$out_dir/rds.json"
 aws rds describe-db-proxy-targets --db-proxy-name "$proxy" > "$out_dir/rds-proxy-targets.json"
@@ -69,6 +81,15 @@ if [ -n "$waf_logs" ] && [ "$waf_logs" != "null" ]; then
     --end-time "$end_ms" \
     --limit 100 > "$out_dir/waf-events.json"
 fi
+
+required_series='["albrequests","albp95","ecscpu","ecsmemory","asginservice","asgdesired","rdscpu","rdsconnections","wafallowed"]'
+jq --argjson required "$required_series" '
+  . + {
+    requiredSeries: $required,
+    populatedSeries: [.MetricDataResults[] | select(.StatusCode == "Complete" and (.Values | length) > 0) | .Id]
+  }
+' "$out_dir/cloudwatch-metrics.json" > "$out_dir/cloudwatch-metrics.normalized.json"
+mv "$out_dir/cloudwatch-metrics.normalized.json" "$out_dir/cloudwatch-metrics.json"
 
 jq -n \
   --arg start "$start_time" \

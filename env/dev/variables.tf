@@ -242,12 +242,6 @@ variable "force_destroy" {
   default     = false
 }
 
-variable "ecr_force_delete" {
-  description = "Allow controlled teardown to delete the ECR repository even when it contains images."
-  type        = bool
-  default     = false
-}
-
 # ==================== HTTPS & TLS CONFIGURATION ====================
 variable "enable_https" {
   description = "Enable HTTPS listener on ALB. Requires acm_certificate_arn."
@@ -277,6 +271,47 @@ variable "waf_rate_limit" {
     condition     = var.waf_rate_limit >= 100 && var.waf_rate_limit <= 20000000
     error_message = "WAF rate limit must be between 100 and 20,000,000."
   }
+}
+
+variable "experiment_mode" {
+  description = "Opt-in experiment mode. Normal plans must use off."
+  type        = string
+  default     = "off"
+
+  validation {
+    condition     = contains(["off", "agent", "rate-test", "performance"], var.experiment_mode)
+    error_message = "experiment_mode must be off, agent, rate-test, or performance."
+  }
+}
+
+variable "experiment_campaign_id" {
+  description = "Approved campaign ID required when experiment_mode is not off"
+  type        = string
+  default     = ""
+}
+
+variable "experiment_expires_at" {
+  description = "UTC cleanup deadline required when experiment_mode is not off"
+  type        = string
+  default     = ""
+}
+
+variable "experiment_source_ipv4" {
+  description = "Optional fixed source IPv4 override; defaults to the first NAT EIP"
+  type        = string
+  default     = ""
+}
+
+variable "experiment_rate_limit" {
+  description = "Preregistered WAF threshold for the 60-second bounded test"
+  type        = number
+  default     = 100
+}
+
+variable "experiment_agent_instance_type" {
+  description = "Private SSM experiment agent instance type"
+  type        = string
+  default     = "t3.small"
 }
 
 # ==================== MONITORING & CLOUDWATCH CONFIGURATION ====================

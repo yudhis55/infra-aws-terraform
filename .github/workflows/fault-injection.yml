@@ -1,0 +1,76 @@
+name: Controlled IaC Fault Injection
+
+on:
+  workflow_dispatch:
+    inputs:
+      parent_commit:
+        description: Approved 40-character baseline infrastructure commit
+        required: true
+        type: string
+      fault_id:
+        description: Exactly one preregistered IaC positive-control fault
+        required: true
+        type: choice
+        options: [FI-IAC-01, FI-IAC-02, FI-IAC-03]
+
+permissions:
+  contents: read
+
+jobs:
+  iac-positive-control:
+    name: Detect ${{ inputs.fault_id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Validate immutable parent
+        shell: bash
+        run: '[[ "${{ inputs.parent_commit }}" =~ ^[0-9a-f]{40}$ ]]'
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.parent_commit }}
+          persist-credentials: false
+
+      - name: Record isolated child lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p fault-evidence
+          printf '%s\n' "${{ inputs.fault_id }}" > .fault-selection
+          git config user.name "Eepistore Fault Fixture"
+          git config user.email "fault-fixture@example.invalid"
+          git add .fault-selection
+          PATCH_DIGEST="sha256:$(git diff --cached --binary | sha256sum | awk '{print $1}')"
+          git commit -m "test(fault): ${{ inputs.fault_id }} ephemeral selection"
+          jq -n \
+            --arg faultId "${{ inputs.fault_id }}" \
+            --arg parentInfraCommit "${{ inputs.parent_commit }}" \
+            --arg mutatedCommit "$(git rev-parse HEAD)" \
+            --arg patchDigest "$PATCH_DIGEST" \
+            --arg workflowRunId "$GITHUB_RUN_ID" \
+            '{faultId:$faultId,repository:"infra",parentInfraCommit:$parentInfraCommit,mutatedCommit:$mutatedCommit,patchDigest:$patchDigest,workflowRunId:$workflowRunId,publishAvailable:false,applyAvailable:false}' \
+            > fault-evidence/lineage.json
+
+      - name: Require Trivy IaC to detect the fixture
+        shell: bash
+        run: |
+          set +e
+          docker run --rm -v "$PWD:/src" \
+            aquasec/trivy@sha256:e2b22eac59c02003d8749f5b8d9bd073b62e30fefaef5b7c8371204e0a4b0c08 \
+            config --format json --output /src/fault-evidence/trivy.json \
+            --severity HIGH,CRITICAL --exit-code 1 "/src/tests/fault-fixtures/iac/${{ inputs.fault_id }}"
+          code=$?
+          set -e
+          findings="$(jq '[.Results[]?.Misconfigurations[]? | select(.Severity == "HIGH" or .Severity == "CRITICAL")] | length' fault-evidence/trivy.json)"
+          test "$code" -ne 0
+          test "$findings" -gt 0
+          jq -n --arg faultId "${{ inputs.fault_id }}" '{faultId:$faultId,severity:"critical",expectedControl:"Trivy IaC",actualControl:"Trivy IaC",detected:true,deliveryBlocked:true,runType:"fault",runStatus:"passed"}' > fault-evidence/result.json
+
+      - name: Upload immutable fault evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fault-${{ inputs.fault_id }}-${{ github.run_id }}
+          path: fault-evidence
+          if-no-files-found: error
+          retention-days: 90

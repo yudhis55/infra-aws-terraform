@@ -36,8 +36,35 @@ variable "waf_rate_limit" {
   }
 }
 
-variable "enable_block_mode" {
-  description = "Enable block mode for WAF (true) or count mode (false) for testing"
-  type        = bool
-  default     = true
+variable "experiment_mode" {
+  description = "Temporary WAF mode: off, rate-test, or performance"
+  type        = string
+  default     = "off"
+
+  validation {
+    condition     = contains(["off", "rate-test", "performance"], var.experiment_mode)
+    error_message = "experiment_mode must be off, rate-test, or performance."
+  }
+}
+
+variable "experiment_source_ipv4" {
+  description = "Fixed public IPv4 source without CIDR suffix; required for a temporary WAF mode"
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.experiment_source_ipv4 == "" || can(cidrhost("${var.experiment_source_ipv4}/32", 0))
+    error_message = "experiment_source_ipv4 must be a valid IPv4 address without a CIDR suffix."
+  }
+}
+
+variable "experiment_rate_limit" {
+  description = "Bounded WAF test threshold in the 60-second evaluation window"
+  type        = number
+  default     = 100
+
+  validation {
+    condition     = var.experiment_rate_limit >= 10 && var.experiment_rate_limit <= 100
+    error_message = "experiment_rate_limit must be between 10 and the preregistered maximum of 100."
+  }
 }

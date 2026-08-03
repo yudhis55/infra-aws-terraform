@@ -1,6 +1,9 @@
 compact: true
 quiet: true
 download-external-modules: false
+skip-path:
+  # Positive-control IaC is scanned only by fault-injection.yml.
+  - tests/fault-fixtures
 skip-check:
   # Manual workflows require reviewed immutable IDs; each input is validated
   # before it can influence plan, apply, or experiment evidence.

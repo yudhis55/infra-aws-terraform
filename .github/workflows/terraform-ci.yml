@@ -12,7 +12,37 @@ on:
         required: true
         default: plan
         type: choice
-        options: [plan, bootstrap-ecr, apply, destroy]
+        options: [plan, apply, destroy, experiment-agent, experiment-drift-recovery, experiment-rate-test, experiment-performance, experiment-cleanup]
+      campaign_id:
+        description: Frozen campaign ID for Cycle R/F and experiment mutations
+        required: false
+        type: string
+      cycle_id:
+        description: Provisioning cycle represented by this run
+        required: false
+        default: none
+        type: choice
+        options: [none, cycle-r, cycle-f]
+      campaign_input_digest:
+        description: Frozen scientific input digest (sha256:...)
+        required: false
+        type: string
+      app_commit_sha:
+        description: Frozen application commit represented by the deployed image
+        required: false
+        type: string
+      image_digest:
+        description: Frozen ECR image digest (sha256:...)
+        required: false
+        type: string
+      experiment_expires_at:
+        description: UTC cleanup deadline for temporary experiment resources
+        required: false
+        type: string
+      experiment_source_ipv4:
+        description: Optional reviewed NAT public IPv4 override
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -67,6 +97,7 @@ jobs:
       - name: Validate experiment automation
         run: |
           bash -n scripts/*.sh
+          shellcheck scripts/*.sh
           node --check scripts/validate-experiment-iam.mjs
           jq empty bootstrap/github-oidc/*.json
           npm ci --prefix tools/evidence
@@ -83,6 +114,7 @@ jobs:
             --exit-code 1 \
             --ignorefile /src/.trivyignore.yaml \
             --skip-dirs /src/env/dev/.terraform \
+            --skip-dirs /src/tests/fault-fixtures \
             --skip-files '**/tfplan*' \
             --skip-files '**/*_plan.*' \
             --skip-files '**/plan.txt' \
@@ -128,18 +160,21 @@ jobs:
       github.event_name == 'workflow_dispatch' &&
       vars.AWS_REGION != '' &&
       vars.TF_VAR_PROJECT_NAME != '' &&
-      (inputs.action == 'bootstrap-ecr' || vars.TF_VAR_APP_IMAGE_URI != '')
+      vars.TF_VAR_APP_IMAGE_URI != ''
     permissions:
       contents: read
       id-token: write
     env:
       TF_VAR_project_name: ${{ vars.TF_VAR_PROJECT_NAME }}
-      TF_VAR_app_image_uri: ${{ vars.TF_VAR_APP_IMAGE_URI || '557947229844.dkr.ecr.ap-southeast-3.amazonaws.com/eepistore-repo:0000000000000000000000000000000000000000' }}
+      TF_VAR_app_image_uri: ${{ vars.TF_VAR_APP_IMAGE_URI }}
       TF_VAR_domain_name: ${{ vars.TF_VAR_DOMAIN_NAME }}
       TF_VAR_route53_zone_id: ${{ vars.TF_VAR_ROUTE53_ZONE_ID }}
       TF_VAR_enable_https: ${{ vars.TF_VAR_ENABLE_HTTPS }}
       TF_VAR_acm_certificate_arn: ${{ vars.TF_VAR_ACM_CERTIFICATE_ARN }}
       TF_VAR_app_base_url: ${{ vars.TF_VAR_APP_BASE_URL }}
+      TF_VAR_experiment_campaign_id: ${{ inputs.campaign_id }}
+      TF_VAR_experiment_expires_at: ${{ inputs.experiment_expires_at }}
+      TF_VAR_experiment_source_ipv4: ${{ inputs.experiment_source_ipv4 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -154,6 +189,59 @@ jobs:
       - name: Terraform init
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform init
+      - name: Validate campaign-bound action
+        if: startsWith(inputs.action, 'experiment-') || inputs.cycle_id != 'none'
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${{ inputs.campaign_id }}" =~ ^campaign-[0-9]{8}-[0-9a-f]{7}-[0-9a-f]{7}$ ]]
+          [[ "${{ inputs.campaign_input_digest }}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "${{ inputs.app_commit_sha }}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${{ inputs.image_digest }}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$TF_VAR_app_image_uri" == *@"${{ inputs.image_digest }}" ]]
+
+          campaign_date="${{ inputs.campaign_id }}"
+          campaign_date="${campaign_date#campaign-}"
+          campaign_date="${campaign_date%%-*}"
+          app_commit="${{ inputs.app_commit_sha }}"
+          expected_campaign="campaign-$campaign_date-${app_commit:0:7}-${GITHUB_SHA:0:7}"
+          test "${{ inputs.campaign_id }}" = "$expected_campaign"
+          started_at="${campaign_date:0:4}-${campaign_date:4:2}-${campaign_date:6:2}T00:00:00Z"
+          mkdir -p campaign-metadata
+          jq -n \
+            --arg appCommit "${{ inputs.app_commit_sha }}" \
+            --arg infraCommit "$GITHUB_SHA" \
+            --arg imageDigest "${{ inputs.image_digest }}" \
+            --arg region "${{ vars.AWS_REGION }}" \
+            --arg targetUrl "${{ vars.TF_VAR_APP_BASE_URL }}" \
+            --arg mediaUrl "https://media.${{ vars.TF_VAR_DOMAIN_NAME }}" \
+            --arg startedAt "$started_at" \
+            --slurpfile profile experiments/profiles/final-load-profile.json \
+            '{appCommit:$appCommit,infraCommit:$infraCommit,imageDigest:$imageDigest,region:$region,targetUrl:$targetUrl,mediaUrl:$mediaUrl,profile:$profile[0],startedAt:$startedAt}' \
+            > campaign-input.json
+          node tools/evidence/campaign.mjs campaign-input.json campaign-metadata
+          test "$(jq -r .inputDigest campaign-metadata/lineage.json)" = "${{ inputs.campaign_input_digest }}"
+          test "$(jq -r .campaignId campaign-metadata/campaign.json)" = "${{ inputs.campaign_id }}"
+          if [[ "${{ inputs.action }}" == experiment-* ]]; then
+            date -u -d "${{ inputs.experiment_expires_at }}" >/dev/null
+            if [ "${{ inputs.action }}" != experiment-cleanup ]; then
+              now_epoch="$(date -u +%s)"
+              expires_epoch="$(date -u -d "${{ inputs.experiment_expires_at }}" +%s)"
+              test "$expires_epoch" -gt "$now_epoch"
+              test "$expires_epoch" -le "$((now_epoch + 43200))"
+            fi
+          fi
+      - name: Configure opt-in experiment mode
+        shell: bash
+        run: |
+          case "${{ inputs.action }}" in
+            experiment-agent) mode=agent ;;
+            experiment-drift-recovery) mode=agent ;;
+            experiment-rate-test) mode=rate-test ;;
+            experiment-performance) mode=performance ;;
+            *) mode=off ;;
+          esac
+          echo "TF_VAR_experiment_mode=$mode" >> "$GITHUB_ENV"
       - name: Configure controlled destroy overrides
         if: inputs.action == 'destroy'
         run: |
@@ -161,7 +249,6 @@ jobs:
             echo "TF_VAR_enable_deletion_protection=false"
             echo "TF_VAR_skip_final_snapshot=true"
             echo "TF_VAR_force_destroy=true"
-            echo "TF_VAR_ecr_force_delete=true"
           } >> "$GITHUB_ENV"
       - name: Create saved plan
         working-directory: ${{ env.TF_WORKING_DIR }}
@@ -170,13 +257,18 @@ jobs:
           PLAN_STARTED_EPOCH="$(date +%s)"
           if [ "${{ inputs.action }}" = "destroy" ]; then
             terraform plan -destroy -out=tfplan
-          elif [ "${{ inputs.action }}" = "bootstrap-ecr" ]; then
-            terraform plan -target=module.ecr -out=tfplan
           else
             terraform plan -out=tfplan
           fi
           terraform show -no-color tfplan > tfplan.txt
           terraform show -json tfplan > tfplan.json
+          case "${{ inputs.action }}" in
+            experiment-agent) node ../../scripts/validate-experiment-plan.mjs tfplan.json agent ;;
+            experiment-drift-recovery) node ../../scripts/validate-experiment-plan.mjs tfplan.json drift-recovery ;;
+            experiment-rate-test) node ../../scripts/validate-experiment-plan.mjs tfplan.json rate-test ;;
+            experiment-performance) node ../../scripts/validate-experiment-plan.mjs tfplan.json performance ;;
+            experiment-cleanup) node ../../scripts/validate-experiment-plan.mjs tfplan.json cleanup ;;
+          esac
           jq '{
             create: [.resource_changes[]? | select(.change.actions == ["create"])] | length,
             update: [.resource_changes[]? | select(.change.actions == ["update"])] | length,
@@ -191,23 +283,37 @@ jobs:
             --argjson durationSeconds "$((PLAN_ENDED_EPOCH - PLAN_STARTED_EPOCH))" \
             '{status:"passed", startedAt:$startedAt, endedAt:$endedAt, durationSeconds:$durationSeconds}' \
             > plan-timing.json
+          jq -n \
+            --arg campaignId "${{ inputs.campaign_id }}" \
+            --arg cycleId "${{ inputs.cycle_id }}" \
+            --arg inputDigest "${{ inputs.campaign_input_digest }}" \
+            --arg appCommit "${{ inputs.app_commit_sha }}" \
+            --arg infraCommit "$GITHUB_SHA" \
+            --arg imageDigest "${{ inputs.image_digest }}" \
+            --arg action "${{ inputs.action }}" \
+            --arg runId "$GITHUB_RUN_ID" \
+            '{campaignId:($campaignId | if length > 0 then . else null end),cycleId:$cycleId,inputDigest:($inputDigest | if length > 0 then . else null end),appCommit:($appCommit | if length > 0 then . else null end),infraCommit:$infraCommit,imageDigest:($imageDigest | if length > 0 then . else null end),action:$action,githubRunId:$runId}' \
+            > campaign-run.json
       - name: Upload reviewable plan
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: terraform-plan-review
+          name: terraform-plan-review-${{ github.run_id }}
           path: |
             ${{ env.TF_WORKING_DIR }}/tfplan.txt
             ${{ env.TF_WORKING_DIR }}/tfplan-summary.json
             ${{ env.TF_WORKING_DIR }}/plan-timing.json
+            ${{ env.TF_WORKING_DIR }}/campaign-run.json
+            campaign-metadata
           retention-days: 30
       - name: Upload short-lived binary plan
-        if: inputs.action == 'bootstrap-ecr' || inputs.action == 'apply' || inputs.action == 'destroy'
+        if: inputs.action != 'plan'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: terraform-saved-plan
+          name: terraform-saved-plan-${{ github.run_id }}
           path: |
             ${{ env.TF_WORKING_DIR }}/tfplan
             ${{ env.TF_WORKING_DIR }}/plan-timing.json
+            ${{ env.TF_WORKING_DIR }}/campaign-run.json
           retention-days: 1
 
   apply:
@@ -218,19 +324,22 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' &&
       github.ref == 'refs/heads/main' &&
-      (inputs.action == 'bootstrap-ecr' || inputs.action == 'apply' || inputs.action == 'destroy')
+      inputs.action != 'plan'
     environment: production
     permissions:
       contents: read
       id-token: write
     env:
       TF_VAR_project_name: ${{ vars.TF_VAR_PROJECT_NAME }}
-      TF_VAR_app_image_uri: ${{ vars.TF_VAR_APP_IMAGE_URI || '557947229844.dkr.ecr.ap-southeast-3.amazonaws.com/eepistore-repo:0000000000000000000000000000000000000000' }}
+      TF_VAR_app_image_uri: ${{ vars.TF_VAR_APP_IMAGE_URI }}
       TF_VAR_domain_name: ${{ vars.TF_VAR_DOMAIN_NAME }}
       TF_VAR_route53_zone_id: ${{ vars.TF_VAR_ROUTE53_ZONE_ID }}
       TF_VAR_enable_https: ${{ vars.TF_VAR_ENABLE_HTTPS }}
       TF_VAR_acm_certificate_arn: ${{ vars.TF_VAR_ACM_CERTIFICATE_ARN }}
       TF_VAR_app_base_url: ${{ vars.TF_VAR_APP_BASE_URL }}
+      TF_VAR_experiment_campaign_id: ${{ inputs.campaign_id }}
+      TF_VAR_experiment_expires_at: ${{ inputs.experiment_expires_at }}
+      TF_VAR_experiment_source_ipv4: ${{ inputs.experiment_source_ipv4 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -245,6 +354,17 @@ jobs:
       - name: Terraform init
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform init
+      - name: Configure opt-in experiment mode
+        shell: bash
+        run: |
+          case "${{ inputs.action }}" in
+            experiment-agent) mode=agent ;;
+            experiment-drift-recovery) mode=agent ;;
+            experiment-rate-test) mode=rate-test ;;
+            experiment-performance) mode=performance ;;
+            *) mode=off ;;
+          esac
+          echo "TF_VAR_experiment_mode=$mode" >> "$GITHUB_ENV"
       - name: Configure controlled destroy overrides
         if: inputs.action == 'destroy'
         run: |
@@ -252,11 +372,10 @@ jobs:
             echo "TF_VAR_enable_deletion_protection=false"
             echo "TF_VAR_skip_final_snapshot=true"
             echo "TF_VAR_force_destroy=true"
-            echo "TF_VAR_ecr_force_delete=true"
           } >> "$GITHUB_ENV"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: terraform-saved-plan
+          name: terraform-saved-plan-${{ github.run_id }}
           path: ${{ env.TF_WORKING_DIR }}
       - name: Disable workload deletion protection
         if: inputs.action == 'destroy'
@@ -292,34 +411,6 @@ jobs:
           else
             echo "ALB $ALB_NAME is already absent."
           fi
-      - name: Empty ECR before controlled destroy
-        if: inputs.action == 'destroy'
-        shell: bash
-        run: |
-          REPOSITORY_NAME="${TF_VAR_project_name}-repo"
-          if ! aws ecr describe-repositories \
-            --repository-names "$REPOSITORY_NAME" \
-            >/dev/null 2>&1; then
-            echo "ECR repository $REPOSITORY_NAME is already absent."
-            exit 0
-          fi
-
-          aws ecr list-images \
-            --repository-name "$REPOSITORY_NAME" \
-            --query 'imageIds' \
-            --output json > ecr-image-ids.json
-
-          IMAGE_COUNT="$(jq 'length' ecr-image-ids.json)"
-          if [ "$IMAGE_COUNT" -eq 0 ]; then
-            echo "ECR repository $REPOSITORY_NAME is already empty."
-            exit 0
-          fi
-
-          aws ecr batch-delete-image \
-            --repository-name "$REPOSITORY_NAME" \
-            --image-ids file://ecr-image-ids.json \
-            >/dev/null
-          echo "Deleted $IMAGE_COUNT image references from $REPOSITORY_NAME."
       - name: Empty versioned workload buckets
         if: inputs.action == 'destroy'
         shell: bash
@@ -347,22 +438,53 @@ jobs:
             '{status:$status, startedAt:$startedAt, endedAt:$endedAt, durationSeconds:$durationSeconds}' \
             > ../../verification-evidence/timing/apply-timing.json
           exit "$EXIT_CODE"
-      - name: Verify ECR bootstrap
-        if: inputs.action == 'bootstrap-ecr'
-        run: |
-          mkdir -p bootstrap-evidence
-          terraform -chdir="${{ env.TF_WORKING_DIR }}" state list |
-            grep '^module.ecr' > bootstrap-evidence/ecr-state.txt
-          aws ecr describe-repositories \
-            --repository-names "${{ vars.TF_VAR_PROJECT_NAME }}-repo" \
-            --query 'repositories[0].{repositoryUri:repositoryUri,imageTagMutability:imageTagMutability,encryptionType:encryptionConfiguration.encryptionType}' \
-            > bootstrap-evidence/ecr.json
       - name: Run database migrations as one-off ECS task
         if: inputs.action == 'apply'
         run: bash scripts/run-ecs-migration.sh "${{ env.TF_WORKING_DIR }}" migration-evidence
       - name: Post-apply AWS verification
         if: inputs.action == 'apply'
         run: bash scripts/verify-aws-post-apply.sh "${{ env.TF_WORKING_DIR }}" verification-evidence
+      - name: Verify temporary experiment state
+        if: startsWith(inputs.action, 'experiment-')
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p experiment-change-evidence
+          terraform -chdir="${{ env.TF_WORKING_DIR }}" output -json > experiment-change-evidence/terraform-output.json
+          jq -n \
+            --arg campaignId "${{ inputs.campaign_id }}" \
+            --arg cycleId "${{ inputs.cycle_id }}" \
+            --arg inputDigest "${{ inputs.campaign_input_digest }}" \
+            --arg action "${{ inputs.action }}" \
+            --arg runId "$GITHUB_RUN_ID" \
+            '{status:"passed",campaignId:$campaignId,cycleId:$cycleId,inputDigest:$inputDigest,action:$action,githubRunId:$runId}' \
+            > experiment-change-evidence/change.json
+          if [ "${{ inputs.action }}" = experiment-cleanup ]; then
+            jq -e '.experiment_mode.value == "off" and .experiment_agent_instance_id.value == null' experiment-change-evidence/terraform-output.json > /dev/null
+            waf_arn="$(terraform -chdir="${{ env.TF_WORKING_DIR }}" output -raw waf_web_acl_arn)"
+            waf_name="$(echo "$waf_arn" | awk -F/ '{print $(NF-1)}')"
+            waf_id="$(echo "$waf_arn" | awk -F/ '{print $NF}')"
+            aws wafv2 get-web-acl --scope REGIONAL --name "$waf_name" --id "$waf_id" > experiment-change-evidence/waf-after-cleanup.json
+            jq -e '
+              ([.WebACL.Rules[].Name] | index("ExperimentEndpointPermanentDeny")) != null and
+              ([.WebACL.Rules[].Name] | index("ExperimentRateLimit")) == null and
+              ([.WebACL.Rules[].Name] | index("ExperimentPerformanceAllow")) == null
+            ' experiment-change-evidence/waf-after-cleanup.json > /dev/null
+          else
+            jq -e '.experiment_agent_instance_id.value != null' experiment-change-evidence/terraform-output.json > /dev/null
+          fi
+          if [ "${{ inputs.action }}" = experiment-drift-recovery ]; then
+            drift_target="$(terraform -chdir="${{ env.TF_WORKING_DIR }}" output -raw experiment_drift_target_arn)"
+            drift_id="${drift_target##*/}"
+            remaining="$(aws ec2 describe-tags --filters "Name=resource-id,Values=$drift_id" "Name=key,Values=ExperimentDrift" --query 'length(Tags)' --output text)"
+            test "$remaining" = 0
+            set +e
+            terraform -chdir="${{ env.TF_WORKING_DIR }}" plan -detailed-exitcode -out=post-drift-recovery.tfplan > experiment-change-evidence/post-recovery-plan.txt
+            no_change_code=$?
+            set -e
+            test "$no_change_code" -eq 0
+            jq -n '{status:"passed",remainingControlledDriftTags:0,noChangePlan:true}' > experiment-change-evidence/drift-recovery.json
+          fi
       - name: Verify empty state after destroy
         if: inputs.action == 'destroy'
         run: |
@@ -370,6 +492,7 @@ jobs:
           terraform -chdir="${{ env.TF_WORKING_DIR }}" state list > destroy-evidence/state-list.txt
           test ! -s destroy-evidence/state-list.txt
           echo "PASS terraform-state-empty" > destroy-evidence/verification-status.txt
+          bash scripts/verify-aws-post-destroy.sh "$TF_VAR_project_name" dev destroy-evidence
       - name: Consolidate apply timing evidence
         if: always() && inputs.action == 'apply'
         run: |
@@ -383,13 +506,6 @@ jobs:
         with:
           name: migration-evidence
           path: migration-evidence
-          retention-days: 30
-      - name: Upload ECR bootstrap evidence
-        if: always() && inputs.action == 'bootstrap-ecr'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: ecr-bootstrap-verification
-          path: bootstrap-evidence
           retention-days: 30
       - name: Upload post-apply evidence
         if: always() && inputs.action == 'apply'
@@ -405,3 +521,11 @@ jobs:
           name: post-destroy-verification
           path: destroy-evidence
           retention-days: 30
+      - name: Upload experiment change evidence
+        if: always() && startsWith(inputs.action, 'experiment-')
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: experiment-change-${{ inputs.action }}-${{ github.run_id }}
+          path: experiment-change-evidence
+          if-no-files-found: error
+          retention-days: 90

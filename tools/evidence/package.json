@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test aggregate.test.mjs"
+    "test": "node --test *.test.mjs ../../scripts/*.test.mjs"
   },
   "devDependencies": {
     "ajv": "8.17.1",

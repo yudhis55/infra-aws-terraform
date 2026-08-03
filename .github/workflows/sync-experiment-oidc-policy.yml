@@ -1,0 +1,97 @@
+name: Sync Experiment OIDC Policy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type SYNC-EXPERIMENT-POLICY to continue
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: experiment-oidc-policy-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: inputs.confirmation == 'SYNC-EXPERIMENT-POLICY'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ap-southeast-3
+      ROLE_NAME: eepistore-infra-experiment-role
+      POLICY_NAME: eepistore-experiment-evidence
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ secrets.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Validate exact mutation boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p oidc-policy-evidence
+          caller_account="$(aws sts get-caller-identity --query Account --output text)"
+          test "$caller_account" = "557947229844"
+          role_arn="$(aws iam get-role --role-name "$ROLE_NAME" --query 'Role.Arn' --output text)"
+          test "$role_arn" = "arn:aws:iam::557947229844:role/$ROLE_NAME"
+          aws accessanalyzer validate-policy \
+            --policy-document file://bootstrap/github-oidc/experiment-evidence-policy.json \
+            --policy-type IDENTITY_POLICY \
+            > oidc-policy-evidence/access-analyzer-before.json
+          jq -e '[.findings[] | select(.findingType != "SUGGESTION")] | length == 0' oidc-policy-evidence/access-analyzer-before.json > /dev/null
+      - name: Capture current inline policy
+        id: current
+        shell: bash
+        run: |
+          set -euo pipefail
+          if aws iam get-role-policy --role-name "$ROLE_NAME" --policy-name "$POLICY_NAME" > oidc-policy-evidence/policy-before.json 2>oidc-policy-evidence/policy-before-error.txt; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            jq '.PolicyDocument' oidc-policy-evidence/policy-before.json > oidc-policy-evidence/policy-before-document.json
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            jq -n '{status:"absent"}' > oidc-policy-evidence/policy-before.json
+          fi
+      - name: Sync and validate the experiment policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          rollback() {
+            if [ "${{ steps.current.outputs.exists }}" = true ]; then
+              aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name "$POLICY_NAME" --policy-document file://oidc-policy-evidence/policy-before-document.json
+            else
+              aws iam delete-role-policy --role-name "$ROLE_NAME" --policy-name "$POLICY_NAME" || true
+            fi
+          }
+          trap rollback ERR
+          aws iam put-role-policy \
+            --role-name "$ROLE_NAME" \
+            --policy-name "$POLICY_NAME" \
+            --policy-document file://bootstrap/github-oidc/experiment-evidence-policy.json
+          node scripts/validate-experiment-iam.mjs \
+            "arn:aws:iam::557947229844:role/$ROLE_NAME" \
+            oidc-policy-evidence/validation
+          aws iam get-role-policy --role-name "$ROLE_NAME" --policy-name "$POLICY_NAME" > oidc-policy-evidence/policy-after.json
+          jq -S '.PolicyDocument' oidc-policy-evidence/policy-after.json > oidc-policy-evidence/policy-after-document.json
+          jq -S '.' bootstrap/github-oidc/experiment-evidence-policy.json > oidc-policy-evidence/policy-source-normalized.json
+          diff -u oidc-policy-evidence/policy-source-normalized.json oidc-policy-evidence/policy-after-document.json > oidc-policy-evidence/policy-diff.txt
+          trap - ERR
+          jq -n --arg role "$ROLE_NAME" --arg policy "$POLICY_NAME" --arg runId "$GITHUB_RUN_ID" '{status:"passed",roleName:$role,policyName:$policy,githubRunId:$runId}' > oidc-policy-evidence/result.json
+      - name: Upload policy synchronization evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: experiment-oidc-policy-sync-${{ github.run_id }}
+          path: oidc-policy-evidence
+          if-no-files-found: error
+          retention-days: 90

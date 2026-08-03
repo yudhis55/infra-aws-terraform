@@ -22,12 +22,6 @@ module "networking" {
   ]
 }
 
-module "ecr" {
-  source       = "../../modules/ecr"
-  project_name = var.project_name
-  force_delete = var.ecr_force_delete
-}
-
 locals {
   effective_app_base_url = var.app_base_url != "" ? var.app_base_url : (
     var.domain_name != "" ? "https://${var.domain_name}" : ""
@@ -37,6 +31,19 @@ locals {
   media_domain_name                 = local.media_domain_enabled ? "${var.cdn_subdomain}.${var.domain_name}" : ""
   media_certificate_arn             = try(module.cloudfront_certificate[0].certificate_arn, "")
   cdn_dns_target                    = local.media_domain_enabled ? module.cdn.distribution_domain_name : var.cloudfront_domain_name
+  experiment_enabled                = var.experiment_mode != "off"
+  experiment_waf_mode               = contains(["rate-test", "performance"], var.experiment_mode) ? var.experiment_mode : "off"
+  experiment_source_ipv4            = var.experiment_source_ipv4 != "" ? var.experiment_source_ipv4 : module.networking.nat_gateway_public_ips[0]
+}
+
+check "experiment_governance" {
+  assert {
+    condition = !local.experiment_enabled || (
+      can(regex("^campaign-[0-9]{8}-[0-9a-f]{7}-[0-9a-f]{7}$", var.experiment_campaign_id)) &&
+      can(formatdate("YYYY-MM-DD'T'hh:mm:ss'Z'", var.experiment_expires_at))
+    )
+    error_message = "Experiment modes require the approved campaign ID and a valid UTC ExpiresAt timestamp."
+  }
 }
 
 module "storage" {
@@ -191,14 +198,35 @@ module "ecs" {
 module "security" {
   source = "../../modules/security"
 
-  project_name   = var.project_name
-  environment    = var.environment
-  vpc_id         = module.vpc.vpc_id
-  alb_arn        = module.ecs.alb_arn
-  enable_waf     = var.enable_waf
-  waf_rate_limit = var.waf_rate_limit
+  project_name           = var.project_name
+  environment            = var.environment
+  vpc_id                 = module.vpc.vpc_id
+  alb_arn                = module.ecs.alb_arn
+  enable_waf             = var.enable_waf
+  waf_rate_limit         = var.waf_rate_limit
+  experiment_mode        = local.experiment_waf_mode
+  experiment_source_ipv4 = local.experiment_source_ipv4
+  experiment_rate_limit  = var.experiment_rate_limit
 
   depends_on = [module.ecs]
+}
+
+module "experiment" {
+  source = "../../modules/experiment"
+
+  project_name        = var.project_name
+  environment         = var.environment
+  enabled             = local.experiment_enabled
+  campaign_id         = var.experiment_campaign_id
+  expires_at          = var.experiment_expires_at
+  vpc_id              = module.vpc.vpc_id
+  vpc_cidr            = "10.0.0.0/16"
+  private_subnet_id   = module.vpc.private_app_subnets[0]
+  instance_type       = var.experiment_agent_instance_type
+  drift_target_arn    = module.networking.alb_security_group_arn
+  experiment_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-infra-experiment-role"
+
+  depends_on = [module.networking]
 }
 
 # ==================== Phase 5: Monitoring & CloudWatch ====================

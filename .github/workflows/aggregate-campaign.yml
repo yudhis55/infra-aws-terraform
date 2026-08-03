@@ -1,0 +1,267 @@
+name: Aggregate Research Campaign Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      campaign_id:
+        required: true
+        type: string
+      campaign_started_at:
+        required: true
+        type: string
+      campaign_ended_at:
+        required: true
+        type: string
+      app_commit_sha:
+        required: true
+        type: string
+      infra_commit_sha:
+        required: true
+        type: string
+      image_digest:
+        required: true
+        type: string
+      campaign_input_digest:
+        required: true
+        type: string
+      run_ids_json:
+        description: JSON object containing the eighteen preregistered source run IDs
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  aggregate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Validate final lineage inputs
+        env:
+          RUN_IDS_JSON: ${{ inputs.run_ids_json }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${{ inputs.campaign_id }}" =~ ^campaign-[0-9]{8}-[0-9a-f]{7}-[0-9a-f]{7}$ ]]
+          [[ "${{ inputs.app_commit_sha }}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${{ inputs.infra_commit_sha }}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${{ inputs.image_digest }}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "${{ inputs.campaign_input_digest }}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          date -u -d "${{ inputs.campaign_started_at }}" > /dev/null
+          date -u -d "${{ inputs.campaign_ended_at }}" > /dev/null
+          test "$(date -u -d "${{ inputs.campaign_ended_at }}" +%s)" -ge "$(date -u -d "${{ inputs.campaign_started_at }}" +%s)"
+          app_commit="${{ inputs.app_commit_sha }}"
+          infra_commit="${{ inputs.infra_commit_sha }}"
+          campaign_date="$(date -u -d "${{ inputs.campaign_started_at }}" +%Y%m%d)"
+          test "${{ inputs.campaign_id }}" = "campaign-$campaign_date-${app_commit:0:7}-${infra_commit:0:7}"
+          jq -e '
+            ["cycleRApply","cycleRDestroy","cycleFApply","cycleFDestroy","experimentAgent","driftInject","driftRecovery","rateMode","faultAuth","faultSca","faultImage","faultIac01","faultIac02","faultIac03","wafRate","performanceMode","runtime","experimentCleanup"] as $required
+            | (keys | sort) == ($required | sort)
+            and all($required[] as $key; .[$key] | type == "string" and test("^[0-9]+$"))
+          ' <<< "$RUN_IDS_JSON" > /dev/null
+          {
+            echo "CYCLE_R_APPLY_RUN_ID=$(jq -r '.cycleRApply' <<< "$RUN_IDS_JSON")"
+            echo "CYCLE_R_DESTROY_RUN_ID=$(jq -r '.cycleRDestroy' <<< "$RUN_IDS_JSON")"
+            echo "CYCLE_F_APPLY_RUN_ID=$(jq -r '.cycleFApply' <<< "$RUN_IDS_JSON")"
+            echo "CYCLE_F_DESTROY_RUN_ID=$(jq -r '.cycleFDestroy' <<< "$RUN_IDS_JSON")"
+            echo "EXPERIMENT_AGENT_RUN_ID=$(jq -r '.experimentAgent' <<< "$RUN_IDS_JSON")"
+            echo "DRIFT_INJECT_RUN_ID=$(jq -r '.driftInject' <<< "$RUN_IDS_JSON")"
+            echo "DRIFT_RECOVERY_RUN_ID=$(jq -r '.driftRecovery' <<< "$RUN_IDS_JSON")"
+            echo "RATE_MODE_RUN_ID=$(jq -r '.rateMode' <<< "$RUN_IDS_JSON")"
+            echo "FAULT_AUTH_RUN_ID=$(jq -r '.faultAuth' <<< "$RUN_IDS_JSON")"
+            echo "FAULT_SCA_RUN_ID=$(jq -r '.faultSca' <<< "$RUN_IDS_JSON")"
+            echo "FAULT_IMAGE_RUN_ID=$(jq -r '.faultImage' <<< "$RUN_IDS_JSON")"
+            echo "FAULT_IAC_01_RUN_ID=$(jq -r '.faultIac01' <<< "$RUN_IDS_JSON")"
+            echo "FAULT_IAC_02_RUN_ID=$(jq -r '.faultIac02' <<< "$RUN_IDS_JSON")"
+            echo "FAULT_IAC_03_RUN_ID=$(jq -r '.faultIac03' <<< "$RUN_IDS_JSON")"
+            echo "WAF_RATE_RUN_ID=$(jq -r '.wafRate' <<< "$RUN_IDS_JSON")"
+            echo "PERFORMANCE_MODE_RUN_ID=$(jq -r '.performanceMode' <<< "$RUN_IDS_JSON")"
+            echo "RUNTIME_RUN_ID=$(jq -r '.runtime' <<< "$RUN_IDS_JSON")"
+            echo "EXPERIMENT_CLEANUP_RUN_ID=$(jq -r '.experimentCleanup' <<< "$RUN_IDS_JSON")"
+          } >> "$GITHUB_ENV"
+          test "$(jq -r '.cycleRApply | tonumber' <<< "$RUN_IDS_JSON")" -lt "$(jq -r '.cycleRDestroy | tonumber' <<< "$RUN_IDS_JSON")"
+          test "$(jq -r '.cycleRDestroy | tonumber' <<< "$RUN_IDS_JSON")" -lt "$(jq -r '.cycleFApply | tonumber' <<< "$RUN_IDS_JSON")"
+          test "$(jq -r '.cycleFApply | tonumber' <<< "$RUN_IDS_JSON")" -lt "$(jq -r '.experimentAgent | tonumber' <<< "$RUN_IDS_JSON")"
+          test "$(jq -r '.experimentAgent | tonumber' <<< "$RUN_IDS_JSON")" -lt "$(jq -r '.driftInject | tonumber' <<< "$RUN_IDS_JSON")"
+          test "$(jq -r '.driftInject | tonumber' <<< "$RUN_IDS_JSON")" -lt "$(jq -r '.driftRecovery | tonumber' <<< "$RUN_IDS_JSON")"
+          test "$(jq -r '.driftRecovery | tonumber' <<< "$RUN_IDS_JSON")" -lt "$(jq -r '.rateMode | tonumber' <<< "$RUN_IDS_JSON")"
+          test "$(jq -r '.rateMode | tonumber' <<< "$RUN_IDS_JSON")" -lt "$(jq -r '.wafRate | tonumber' <<< "$RUN_IDS_JSON")"
+          test "$(jq -r '.wafRate | tonumber' <<< "$RUN_IDS_JSON")" -lt "$(jq -r '.performanceMode | tonumber' <<< "$RUN_IDS_JSON")"
+          test "$(jq -r '.performanceMode | tonumber' <<< "$RUN_IDS_JSON")" -lt "$(jq -r '.runtime | tonumber' <<< "$RUN_IDS_JSON")"
+          test "$(jq -r '.runtime | tonumber' <<< "$RUN_IDS_JSON")" -lt "$(jq -r '.experimentCleanup | tonumber' <<< "$RUN_IDS_JSON")"
+          test "$(jq -r '.experimentCleanup | tonumber' <<< "$RUN_IDS_JSON")" -lt "$(jq -r '.cycleFDestroy | tonumber' <<< "$RUN_IDS_JSON")"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.infra_commit_sha }}
+          persist-credentials: false
+      - name: Verify checked-out infrastructure lineage
+        run: test "$(git rev-parse HEAD)" = "${{ inputs.infra_commit_sha }}"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: tools/evidence/package-lock.json
+      - name: Install canonical evidence tooling
+        run: npm ci --prefix tools/evidence
+      - name: Download Cycle R and Cycle F evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p source/cycle-r source/cycle-f
+          gh run download "$CYCLE_R_APPLY_RUN_ID" --name post-apply-verification --dir source/cycle-r/apply
+          gh run download "$CYCLE_R_APPLY_RUN_ID" --name "terraform-plan-review-$CYCLE_R_APPLY_RUN_ID" --dir source/cycle-r/plan
+          gh run download "$CYCLE_R_DESTROY_RUN_ID" --name post-destroy-verification --dir source/cycle-r/destroy
+          gh run download "$CYCLE_F_APPLY_RUN_ID" --name post-apply-verification --dir source/cycle-f/apply
+          gh run download "$CYCLE_F_APPLY_RUN_ID" --name "terraform-plan-review-$CYCLE_F_APPLY_RUN_ID" --dir source/cycle-f/plan
+          gh run download "$CYCLE_F_DESTROY_RUN_ID" --name post-destroy-verification --dir source/cycle-f/destroy
+      - name: Download fault, WAF, runtime, and cleanup evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p source/modes/{agent,rate,performance}/{plan,change} source/drift/{injection,recovery-plan,recovery} source/faults/{auth,sca,image,iac01,iac02,iac03} source/waf source/runtime source/cleanup
+          gh run download "$EXPERIMENT_AGENT_RUN_ID" --name "terraform-plan-review-$EXPERIMENT_AGENT_RUN_ID" --dir source/modes/agent/plan
+          gh run download "$EXPERIMENT_AGENT_RUN_ID" --name "experiment-change-experiment-agent-$EXPERIMENT_AGENT_RUN_ID" --dir source/modes/agent/change
+          gh run download "$DRIFT_INJECT_RUN_ID" --name "campaign-drift-drift-inject-$DRIFT_INJECT_RUN_ID" --dir source/drift/injection
+          gh run download "$DRIFT_RECOVERY_RUN_ID" --name "terraform-plan-review-$DRIFT_RECOVERY_RUN_ID" --dir source/drift/recovery-plan
+          gh run download "$DRIFT_RECOVERY_RUN_ID" --name "experiment-change-experiment-drift-recovery-$DRIFT_RECOVERY_RUN_ID" --dir source/drift/recovery
+          gh run download "$RATE_MODE_RUN_ID" --name "terraform-plan-review-$RATE_MODE_RUN_ID" --dir source/modes/rate/plan
+          gh run download "$RATE_MODE_RUN_ID" --name "experiment-change-experiment-rate-test-$RATE_MODE_RUN_ID" --dir source/modes/rate/change
+          gh run download "$FAULT_AUTH_RUN_ID" --repo yudhis55/eepistore --name "fault-FI-AUTH-01-$FAULT_AUTH_RUN_ID" --dir source/faults/auth
+          gh run download "$FAULT_SCA_RUN_ID" --repo yudhis55/eepistore --name "fault-FI-SCA-01-$FAULT_SCA_RUN_ID" --dir source/faults/sca
+          gh run download "$FAULT_IMAGE_RUN_ID" --repo yudhis55/eepistore --name "fault-FI-IMG-01-$FAULT_IMAGE_RUN_ID" --dir source/faults/image
+          gh run download "$FAULT_IAC_01_RUN_ID" --name "fault-FI-IAC-01-$FAULT_IAC_01_RUN_ID" --dir source/faults/iac01
+          gh run download "$FAULT_IAC_02_RUN_ID" --name "fault-FI-IAC-02-$FAULT_IAC_02_RUN_ID" --dir source/faults/iac02
+          gh run download "$FAULT_IAC_03_RUN_ID" --name "fault-FI-IAC-03-$FAULT_IAC_03_RUN_ID" --dir source/faults/iac03
+          gh run download "$WAF_RATE_RUN_ID" --name "campaign-waf-rate-$WAF_RATE_RUN_ID" --dir source/waf
+          gh run download "$PERFORMANCE_MODE_RUN_ID" --name "terraform-plan-review-$PERFORMANCE_MODE_RUN_ID" --dir source/modes/performance/plan
+          gh run download "$PERFORMANCE_MODE_RUN_ID" --name "experiment-change-experiment-performance-$PERFORMANCE_MODE_RUN_ID" --dir source/modes/performance/change
+          gh run download "$RUNTIME_RUN_ID" --name "campaign-runtime-$RUNTIME_RUN_ID" --dir source/runtime
+          gh run download "$EXPERIMENT_CLEANUP_RUN_ID" --name "experiment-change-experiment-cleanup-$EXPERIMENT_CLEANUP_RUN_ID" --dir source/cleanup
+      - name: Assemble the canonical raw layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=experiment-evidence
+          mkdir -p "$root"/{metadata,delivery,security,functional,runtime,monitoring,cleanup,conformance}
+          jq -n --arg campaignId "${{ inputs.campaign_id }}" --arg region ap-southeast-3 --arg targetUrl https://eepistore.web.id --arg startedAt "${{ inputs.campaign_started_at }}" --arg endedAt "${{ inputs.campaign_ended_at }}" '{campaignId:$campaignId,region:$region,targetUrl:$targetUrl,startedAt:$startedAt,endedAt:$endedAt}' > "$root/metadata/campaign.json"
+          jq -n --arg appCommit "${{ inputs.app_commit_sha }}" --arg infraCommit "${{ inputs.infra_commit_sha }}" --arg imageDigest "${{ inputs.image_digest }}" --arg inputDigest "${{ inputs.campaign_input_digest }}" '{appCommit:$appCommit,infraCommit:$infraCommit,imageDigest:$imageDigest,inputDigest:$inputDigest}' > "$root/metadata/lineage.json"
+
+          cp source/runtime/campaign-evidence/metadata/lineage-verification.json "$root/metadata/"
+          jq -e \
+            --arg appCommit "${{ inputs.app_commit_sha }}" \
+            --arg imageDigest "${{ inputs.image_digest }}" \
+            --arg applyRun "$CYCLE_F_APPLY_RUN_ID" \
+            '.status == "passed" and .appCommit == $appCommit and .imageDigest == $imageDigest and .cycleFApplyRunId == $applyRun' \
+            "$root/metadata/lineage-verification.json" > /dev/null
+
+          for specification in \
+            "agent:$EXPERIMENT_AGENT_RUN_ID:experiment-agent:agent" \
+            "rate:$RATE_MODE_RUN_ID:experiment-rate-test:rate-test" \
+            "performance:$PERFORMANCE_MODE_RUN_ID:experiment-performance:performance"; do
+            IFS=: read -r directory run_id action expected_mode <<< "$specification"
+            jq -e \
+              --arg campaignId "${{ inputs.campaign_id }}" \
+              --arg inputDigest "${{ inputs.campaign_input_digest }}" \
+              --arg appCommit "${{ inputs.app_commit_sha }}" \
+              --arg infraCommit "${{ inputs.infra_commit_sha }}" \
+              --arg imageDigest "${{ inputs.image_digest }}" \
+              --arg action "$action" \
+              --arg runId "$run_id" \
+              '.campaignId == $campaignId and .cycleId == "cycle-f" and .inputDigest == $inputDigest and .appCommit == $appCommit and .infraCommit == $infraCommit and .imageDigest == $imageDigest and .action == $action and .githubRunId == $runId' \
+              "source/modes/$directory/plan/campaign-run.json" > /dev/null
+            jq -e --arg action "$action" --arg runId "$run_id" '.status == "passed" and .action == $action and .githubRunId == $runId' "source/modes/$directory/change/change.json" > /dev/null
+            jq -e --arg mode "$expected_mode" '.experiment_mode.value == $mode and .experiment_agent_instance_id.value != null' "source/modes/$directory/change/terraform-output.json" > /dev/null
+          done
+
+          for cycle in r f; do
+            apply_run="$CYCLE_R_APPLY_RUN_ID"
+            destroy_run="$CYCLE_R_DESTROY_RUN_ID"
+            if [ "$cycle" = f ]; then
+              apply_run="$CYCLE_F_APPLY_RUN_ID"
+              destroy_run="$CYCLE_F_DESTROY_RUN_ID"
+            fi
+            jq -e \
+              --arg campaignId "${{ inputs.campaign_id }}" \
+              --arg cycleId "cycle-$cycle" \
+              --arg inputDigest "${{ inputs.campaign_input_digest }}" \
+              --arg appCommit "${{ inputs.app_commit_sha }}" \
+              --arg infraCommit "${{ inputs.infra_commit_sha }}" \
+              --arg imageDigest "${{ inputs.image_digest }}" \
+              --arg runId "$apply_run" \
+              '.campaignId == $campaignId and .cycleId == $cycleId and .inputDigest == $inputDigest and .appCommit == $appCommit and .infraCommit == $infraCommit and .imageDigest == $imageDigest and .action == "apply" and .githubRunId == $runId' \
+              "source/cycle-$cycle/plan/campaign-run.json" > /dev/null
+            test ! -s "source/cycle-$cycle/destroy/state-list.txt"
+            grep -Fx 'PASS terraform-state-empty' "source/cycle-$cycle/destroy/verification-status.txt" > /dev/null
+            grep -Fx 'PASS aws-workload-resources-absent' "source/cycle-$cycle/destroy/verification-status.txt" > /dev/null
+            jq -e '.status == "passed" and ([.remaining[]] | all(. == 0)) and .retainedPrerequisites.ecrRepositories == 1' "source/cycle-$cycle/destroy/aws-resource-audit.json" > /dev/null
+            failures="$(grep -c '^FAIL' "source/cycle-$cycle/apply/verification-status.txt" || true)"
+            status=passed; if [ "$failures" -ne 0 ]; then status=failed; fi
+            jq -n --arg cycleId "cycle-$cycle" --arg runStatus "$status" --arg inputDigest "${{ inputs.campaign_input_digest }}" --arg apply "$apply_run" --arg destroy "$destroy_run" --slurpfile plan "source/cycle-$cycle/plan/plan-timing.json" --slurpfile applyTiming "source/cycle-$cycle/apply/timing/apply-timing.json" --slurpfile verify "source/cycle-$cycle/apply/timing/verification-timing.json" '{cycleId:$cycleId,runStatus:$runStatus,inputDigest:$inputDigest,githubRunIds:{apply:$apply,destroy:$destroy},timings:{plan:$plan[0],apply:$applyTiming[0],verification:$verify[0]}}' > "$root/delivery/cycle-$cycle.json"
+          done
+
+          jq -s '.[0] as $lineages | .[1] as $results | [range(0; $lineages|length) as $i | $lineages[$i] + $results[$i]]' \
+            <(jq -s '.' source/faults/{auth,sca,image,iac01,iac02,iac03}/lineage.json) \
+            <(jq -s '.' source/faults/{auth,sca,image,iac01,iac02,iac03}/result.json) \
+            > "$root/metadata/child-fault-lineages.json"
+          jq -s '{cases:.}' source/faults/{auth,sca,image,iac01,iac02,iac03}/result.json > "$root/security/fault-injection-matrix.json"
+
+          cp source/runtime/campaign-evidence/functional/playwright-results.json "$root/functional/"
+          cp source/runtime/campaign-evidence/functional/fixture.json "$root/functional/"
+          cp source/runtime/campaign-evidence/security/zap-summary.json "$root/security/"
+          cp source/runtime/campaign-evidence/security/network-isolation.json "$root/security/"
+          cp source/runtime/campaign-evidence/runtime/scale-trial-{1,2,3}.json "$root/runtime/"
+          cp source/runtime/campaign-evidence/runtime/scaling-events.json "$root/runtime/"
+          cp source/runtime/campaign-evidence/monitoring/cloudwatch-metrics.json "$root/monitoring/"
+          cp source/runtime/campaign-evidence/monitoring/application-errors.json "$root/monitoring/"
+          cp source/runtime/campaign-evidence/cleanup/database-cleanup.json "$root/cleanup/"
+          cp source/runtime/campaign-evidence/cleanup/s3-cleanup.json "$root/cleanup/"
+          jq -e '.experiment_mode.value == "off" and .experiment_agent_instance_id.value == null' source/cleanup/terraform-output.json > /dev/null
+          jq '.cleanupStatus="passed"' source/waf/campaign-evidence/security/waf-rate-protection.json > "$root/security/waf-rate-protection.json"
+          jq -n '{remainingAgents:0}' > "$root/cleanup/agent-cleanup.json"
+          jq -n '{remainingTemporaryResources:0}' > "$root/cleanup/terraform-experiment-cleanup.json"
+
+          grep '^PASS' source/cycle-r/apply/verification-status.txt | sed 's/^PASS //' | sort > source/cycle-r/pass.txt
+          grep '^PASS' source/cycle-f/apply/verification-status.txt | sed 's/^PASS //' | sort > source/cycle-f/pass.txt
+          differences="$(comm -3 source/cycle-r/pass.txt source/cycle-f/pass.txt | jq -Rsc 'split("\n") | map(select(length > 0))')"
+          jq -e '.status == "passed" and .action == "injected" and .tagKey == "ExperimentDrift" and .tagValue == "controlled"' source/drift/injection/campaign-evidence/conformance/drift/injection.json > /dev/null
+          jq -e '.create == 0 and .update == 1 and .delete == 0 and .replace == 0' source/drift/recovery-plan/tfplan-summary.json > /dev/null
+          jq -e \
+            --arg campaignId "${{ inputs.campaign_id }}" \
+            --arg inputDigest "${{ inputs.campaign_input_digest }}" \
+            --arg appCommit "${{ inputs.app_commit_sha }}" \
+            --arg infraCommit "${{ inputs.infra_commit_sha }}" \
+            --arg imageDigest "${{ inputs.image_digest }}" \
+            --arg runId "$DRIFT_RECOVERY_RUN_ID" \
+            '.campaignId == $campaignId and .cycleId == "cycle-f" and .inputDigest == $inputDigest and .appCommit == $appCommit and .infraCommit == $infraCommit and .imageDigest == $imageDigest and .action == "experiment-drift-recovery" and .githubRunId == $runId' \
+            source/drift/recovery-plan/campaign-run.json > /dev/null
+          jq -e '.status == "passed" and .remainingControlledDriftTags == 0 and .noChangePlan == true' source/drift/recovery/drift-recovery.json > /dev/null
+          jq -n \
+            --argjson differences "$differences" \
+            --arg agentRunId "$EXPERIMENT_AGENT_RUN_ID" \
+            --arg injectionRunId "$DRIFT_INJECT_RUN_ID" \
+            --arg recoveryRunId "$DRIFT_RECOVERY_RUN_ID" \
+            --arg rateRunId "$RATE_MODE_RUN_ID" \
+            --arg performanceRunId "$PERFORMANCE_MODE_RUN_ID" \
+            --arg cleanupRunId "$EXPERIMENT_CLEANUP_RUN_ID" \
+            '{status:(if ($differences|length)==0 then "passed" else "failed" end),semanticDifferences:$differences,terraformModeRuns:{agent:$agentRunId,rateTest:$rateRunId,performance:$performanceRunId,cleanup:$cleanupRunId},controlledDrift:{status:"passed",injectionRunId:$injectionRunId,recoveryRunId:$recoveryRunId,recoveryPlanUpdates:1,remainingControlledDriftTags:0,noChangeAfterRecovery:true}}' \
+            > "$root/conformance/report.json"
+      - name: Aggregate, validate, and create the offline archive
+        run: |
+          node tools/evidence/aggregate-campaign.mjs experiment-evidence experiment-evidence/experiment-evidence.json
+          node tools/evidence/archive.mjs create experiment-evidence academic-archive
+          node tools/evidence/archive.mjs verify academic-archive
+      - name: Upload canonical campaign evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: canonical-campaign-${{ inputs.campaign_id }}-${{ github.run_id }}
+          path: |
+            experiment-evidence
+            academic-archive
+          if-no-files-found: error
+          retention-days: 90

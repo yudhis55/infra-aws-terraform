@@ -1,0 +1,69 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import test from "node:test";
+
+function run(mode, resourceChanges) {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "eepistore-plan-"));
+  const file = path.join(directory, "plan.json");
+  fs.writeFileSync(file, JSON.stringify({ resource_changes: resourceChanges }));
+  return spawnSync(process.execPath, ["scripts/validate-experiment-plan.mjs", file, mode], {
+    cwd: path.resolve("../.."),
+    encoding: "utf8",
+  });
+}
+
+test("accepts only experiment module changes for agent mode", () => {
+  const result = run("agent", [
+    { address: "module.experiment.aws_instance.agent[0]", change: { actions: ["create"] } },
+  ]);
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test("rejects unrelated or replacement changes", () => {
+  const result = run("rate-test", [
+    { address: "module.rds.aws_db_instance.main", change: { actions: ["update"] } },
+    { address: "module.security.aws_wafv2_web_acl.main[0]", change: { actions: ["delete", "create"] } },
+  ]);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /module\.rds/);
+});
+
+test("accepts only removal of the controlled drift tag", () => {
+  const result = run("drift-recovery", [
+    {
+      address: "module.networking.aws_security_group.alb",
+      change: {
+        actions: ["update"],
+        before: {
+          description: "ALB security group",
+          tags: { Environment: "dev", ExperimentDrift: "controlled" },
+          tags_all: { Environment: "dev", ExperimentDrift: "controlled" },
+        },
+        after: {
+          description: "ALB security group",
+          tags: { Environment: "dev" },
+          tags_all: { Environment: "dev" },
+        },
+      },
+    },
+  ]);
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test("rejects a drift recovery that changes a functional attribute", () => {
+  const result = run("drift-recovery", [
+    {
+      address: "module.networking.aws_security_group.alb",
+      change: {
+        actions: ["update"],
+        before: { description: "before", tags: { ExperimentDrift: "controlled" } },
+        after: { description: "after", tags: {} },
+      },
+    },
+  ]);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /unexpected attributes/);
+});
