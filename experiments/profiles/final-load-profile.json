@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1.0.0",
+  "runType": "final-trial",
+  "targetUrl": "https://eepistore.web.id",
+  "maxVus": 30,
+  "stages": [
+    { "name": "warm-up", "targetVus": 2, "durationSeconds": 120 },
+    { "name": "baseline", "targetVus": 2, "durationSeconds": 180 },
+    { "name": "step-1", "targetVus": 5, "durationSeconds": 240 },
+    { "name": "step-2", "targetVus": 10, "durationSeconds": 360 },
+    { "name": "step-3", "targetVus": 30, "durationSeconds": 600 },
+    { "name": "ramp-down", "targetVus": 0, "durationSeconds": 60 }
+  ],
+  "thresholds": {
+    "httpFailureRateMax": 0.01,
+    "checksRateMin": 0.99,
+    "p95LatencyMsMax": 1000,
+    "scaleInSecondsMax": 1200
+  },
+  "cooldownSeconds": 600,
+  "notes": [
+    "This is a bounded scale-observation profile, not a maximum-capacity test.",
+    "The final three trials must use the same file digest without edits."
+  ]
+}

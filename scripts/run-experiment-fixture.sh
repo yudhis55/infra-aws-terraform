@@ -11,7 +11,7 @@ case "$action" in
 esac
 
 for name in EXPERIMENT_ID EXPERIMENT_BUYER_EMAIL EXPERIMENT_OTHER_BUYER_EMAIL \
-  EXPERIMENT_SELLER_EMAIL EXPERIMENT_ADMIN_EMAIL; do
+  EXPERIMENT_SELLER_EMAIL EXPERIMENT_OTHER_SELLER_EMAIL EXPERIMENT_ADMIN_EMAIL; do
   test -n "${!name:-}" || { echo "$name is required" >&2; exit 2; }
 done
 
@@ -29,6 +29,7 @@ overrides="$(jq -cn \
   --arg buyer "$EXPERIMENT_BUYER_EMAIL" \
   --arg other "$EXPERIMENT_OTHER_BUYER_EMAIL" \
   --arg seller "$EXPERIMENT_SELLER_EMAIL" \
+  --arg other_seller "$EXPERIMENT_OTHER_SELLER_EMAIL" \
   --arg admin "$EXPERIMENT_ADMIN_EMAIL" \
   '{
     containerOverrides: [{
@@ -45,6 +46,7 @@ overrides="$(jq -cn \
         {name: "EXPERIMENT_BUYER_EMAIL", value: $buyer},
         {name: "EXPERIMENT_OTHER_BUYER_EMAIL", value: $other},
         {name: "EXPERIMENT_SELLER_EMAIL", value: $seller},
+        {name: "EXPERIMENT_OTHER_SELLER_EMAIL", value: $other_seller},
         {name: "EXPERIMENT_ADMIN_EMAIL", value: $admin}
       ]
     }]
@@ -90,6 +92,11 @@ jq -r --arg marker "$marker" \
   '[.events[].message | select(contains($marker)) | split($marker)[1]] | last // empty' \
   "$out_dir/${action}-logs.json" > "$output_file"
 jq -e --arg id "$EXPERIMENT_ID" '.experimentId == $id' "$output_file" > /dev/null
+if [ "$action" = setup ]; then
+  jq -e '.users | [.buyerId,.otherBuyerId,.sellerId,.otherSellerId,.adminId] | length == 5 and all(. != null)' "$output_file" > /dev/null
+else
+  jq -e '.removedUsers == 5 and .remainingUsers == 0 and .remainingStores == 0 and .remainingOrders == 0 and .remainingProducts == 0 and .remainingPayments == 0 and .remainingRateLimitBuckets == 0' "$output_file" > /dev/null
+fi
 
 ended_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 jq -n \

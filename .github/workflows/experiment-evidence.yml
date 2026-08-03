@@ -1,37 +1,16 @@
-name: Final Experiment Evidence
+name: Legacy Evidence Reprocess
 
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Safe role preflight or the complete post-apply experiment
+        description: Legacy role preflight or schema 1 evidence reprocess only
         required: true
         default: role-preflight
         type: choice
-        options: [role-preflight, full-experiment, reprocess-evidence]
-      app_commit_sha:
-        description: Full app commit SHA used to build the deployed image
-        required: false
-        type: string
-      image_digest:
-        description: Deployed image digest in sha256 format
-        required: false
-        type: string
-      app_publish_run_id:
-        description: App publish workflow run ID
-        required: false
-        type: string
-      terraform_apply_run_id:
-        description: Controlled Terraform apply workflow run ID
-        required: false
-        type: string
-      target_url:
-        description: Terraform-created HTTPS application URL
-        required: true
-        default: https://eepistore.web.id
-        type: string
+        options: [role-preflight, reprocess-evidence]
       source_experiment_run_id:
-        description: Completed experiment run to reprocess without repeating runtime traffic
+        description: Completed legacy experiment run to reprocess without runtime traffic
         required: false
         type: string
 
@@ -39,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: final-experiment-production
+  group: legacy-evidence-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -57,358 +36,33 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_EXPERIMENT_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
-
       - name: Verify assumed role and permitted backend read
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p oidc-preflight
-          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
-          CALLER_ARN="$(aws sts get-caller-identity --query Arn --output text)"
-          test "$ACCOUNT_ID" = "557947229844"
-          [[ "$CALLER_ARN" == arn:aws:sts::557947229844:assumed-role/eepistore-infra-experiment-role/* ]]
-          aws s3api get-bucket-location \
-            --bucket eepistore-dev-terraform-state \
-            > oidc-preflight/backend-location.json
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          caller_arn="$(aws sts get-caller-identity --query Arn --output text)"
+          test "$account_id" = "557947229844"
+          [[ "$caller_arn" == arn:aws:sts::557947229844:assumed-role/eepistore-infra-experiment-role/* ]]
+          aws s3api get-bucket-location --bucket eepistore-dev-terraform-state > oidc-preflight/backend-location.json
           jq -n \
-            --arg accountId "$ACCOUNT_ID" \
-            --arg callerArn "$CALLER_ARN" \
+            --arg accountId "$account_id" \
+            --arg callerArn "$caller_arn" \
             --arg region "${{ vars.AWS_REGION }}" \
             '{status:"passed",accountId:$accountId,callerArn:$callerArn,region:$region}' \
             > oidc-preflight/result.json
-
       - name: Upload OIDC preflight evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: experiment-oidc-preflight
+          name: experiment-oidc-preflight-${{ github.run_id }}
           path: oidc-preflight
-          retention-days: 30
-
-  experiment:
-    name: Controlled Runtime Experiment
-    if: inputs.mode == 'full-experiment'
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    environment: production
-    permissions:
-      contents: read
-      actions: read
-      id-token: write
-    env:
-      TF_IN_AUTOMATION: "true"
-      TF_INPUT: "false"
-      TF_WORKING_DIR: env/dev
-      TF_VERSION: "1.14.4"
-      APP_URL: ${{ inputs.target_url }}
-      APP_COMMIT_SHA: ${{ inputs.app_commit_sha }}
-      APP_IMAGE_DIGEST: ${{ inputs.image_digest }}
-      APP_PUBLISH_RUN_ID: ${{ inputs.app_publish_run_id }}
-      TERRAFORM_APPLY_RUN_ID: ${{ inputs.terraform_apply_run_id }}
-      AWS_REGION: ${{ vars.AWS_REGION }}
-      INFRA_COMMIT_SHA: ${{ github.sha }}
-    steps:
-      - name: Validate immutable inputs
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$APP_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$APP_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
-          [[ "$TERRAFORM_APPLY_RUN_ID" =~ ^[0-9]+$ ]]
-          [[ "$APP_PUBLISH_RUN_ID" =~ ^[0-9]+$ ]]
-          [[ "$APP_URL" =~ ^https:// ]]
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Check out the exact deployed application source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: yudhis55/eepistore
-          ref: ${{ inputs.app_commit_sha }}
-          path: app-source
-          persist-credentials: false
-
-      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
-        with:
-          role-to-assume: ${{ secrets.AWS_EXPERIMENT_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
-
-      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: |
-            app-source/package-lock.json
-            tools/evidence/package-lock.json
-
-      - name: Initialize Terraform state access
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform init
-
-      - name: Prepare isolated experiment identity
-        shell: bash
-        run: |
-          set -euo pipefail
-          EXPERIMENT_ID="exp-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          PASSWORD="$(openssl rand -base64 36 | tr -d '\n')Aa1"
-          echo "::add-mask::$PASSWORD"
-          {
-            echo "EXPERIMENT_ID=$EXPERIMENT_ID"
-            echo "EXPERIMENT_PASSWORD=$PASSWORD"
-            echo "EXPERIMENT_BUYER_EMAIL=buyer-${EXPERIMENT_ID}@example.invalid"
-            echo "EXPERIMENT_OTHER_BUYER_EMAIL=other-${EXPERIMENT_ID}@example.invalid"
-            echo "EXPERIMENT_SELLER_EMAIL=seller-${EXPERIMENT_ID}@example.invalid"
-            echo "EXPERIMENT_ADMIN_EMAIL=admin-${EXPERIMENT_ID}@example.invalid"
-            echo "EXPERIMENT_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          } >> "$GITHUB_ENV"
-          mkdir -p experiment-evidence/{aws,k6,timing,preflight} app-source/runtime-evidence
-
-      - name: Verify deployed source, image, and readiness
-        run: |
-          bash scripts/verify-experiment-preflight.sh \
-            "$TF_WORKING_DIR" "$APP_URL" "$APP_IMAGE_DIGEST" "$APP_COMMIT_SHA" \
-            experiment-evidence/preflight
-
-      - name: Validate source workflow provenance
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl --fail --silent --show-error \
-            -H "Accept: application/vnd.github+json" \
-            -H "User-Agent: eepistore-thesis-evidence" \
-            "https://api.github.com/repos/yudhis55/eepistore/actions/runs/$APP_PUBLISH_RUN_ID" \
-            > experiment-evidence/app-publish-run.json
-          curl --fail --silent --show-error \
-            -H "Accept: application/vnd.github+json" \
-            -H "User-Agent: eepistore-thesis-evidence" \
-            "https://api.github.com/repos/yudhis55/eepistore/actions/runs/$APP_PUBLISH_RUN_ID/jobs?per_page=100" \
-            > experiment-evidence/app-publish-jobs.json
-          gh api \
-            "repos/${{ github.repository }}/actions/runs/$TERRAFORM_APPLY_RUN_ID" \
-            > experiment-evidence/terraform-apply-run.json
-          gh api \
-            "repos/${{ github.repository }}/actions/runs/$TERRAFORM_APPLY_RUN_ID/jobs?per_page=100" \
-            > experiment-evidence/terraform-apply-jobs.json
-
-          jq -e --arg sha "$APP_COMMIT_SHA" \
-            '.head_sha == $sha and .conclusion == "success" and .event == "workflow_dispatch"' \
-            experiment-evidence/app-publish-run.json > /dev/null
-          jq -e --arg sha "$INFRA_COMMIT_SHA" \
-            '.head_sha == $sha and .conclusion == "success" and .event == "workflow_dispatch"' \
-            experiment-evidence/terraform-apply-run.json > /dev/null
-
-          jq -n \
-            --slurpfile app experiment-evidence/app-publish-jobs.json \
-            --slurpfile infra experiment-evidence/terraform-apply-jobs.json \
-            '{
-              status: "passed",
-              app: {
-                requiredJobs: [
-                  "Quality Gate",
-                  "SAST (CodeQL)",
-                  "SCA (npm audit)",
-                  "Build, SBOM, and Container Scan",
-                  "Publish Scanned Image to ECR"
-                ],
-                jobs: $app[0].jobs | map({name, conclusion})
-              },
-              infra: {
-                requiredJobs: [
-                  "Validate and IaC Security Gates",
-                  "Terraform Plan",
-                  "Controlled Bootstrap, Apply, or Destroy"
-                ],
-                jobs: $infra[0].jobs | map({name, conclusion})
-              }
-            }
-            | . as $root
-            | [
-                $root.app.requiredJobs[] as $required
-                | any($root.app.jobs[]; .name == $required and .conclusion == "success")
-              ] as $appChecks
-            | [
-                $root.infra.requiredJobs[] as $required
-                | any($root.infra.jobs[]; .name == $required and .conclusion == "success")
-              ] as $infraChecks
-            | if (all($appChecks[]; .) and all($infraChecks[]; .))
-              then .
-              else error("required source workflow job is absent or unsuccessful")
-              end' > experiment-evidence/scanner-summary.json
-
-      - name: Download controlled apply verification
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh run download "$TERRAFORM_APPLY_RUN_ID" \
-            --repo "${{ github.repository }}" \
-            --name post-apply-verification \
-            --dir experiment-evidence/apply-verification
-          cp experiment-evidence/apply-verification/verification-status.txt \
-            experiment-evidence/verification-status.txt
-          if [ -d experiment-evidence/apply-verification/timing ]; then
-            cp experiment-evidence/apply-verification/timing/*.json experiment-evidence/timing/
-          fi
-
-      - name: Install application test dependencies
-        working-directory: app-source
-        run: |
-          npm ci
-          npx playwright install --with-deps chromium
-
-      - name: Install evidence tooling
-        working-directory: tools/evidence
-        run: npm ci
-
-      - name: Public runtime smoke
-        working-directory: app-source
-        run: bash scripts/runtime-smoke.sh "$APP_URL" runtime-evidence
-
-      - name: Register isolated experiment users
-        working-directory: app-source
-        run: npx playwright test tests/e2e/bootstrap-users.spec.ts --reporter=line
-
-      - name: Prepare role and commerce fixtures through one-off ECS task
-        run: |
-          bash scripts/run-experiment-fixture.sh \
-            "$TF_WORKING_DIR" setup experiment-evidence/fixture
-          cp experiment-evidence/fixture/fixture.json app-source/runtime-evidence/fixture.json
-
-      - name: Role-aware functional smoke
-        working-directory: app-source
-        env:
-          EXPERIMENT_FIXTURE_FILE: runtime-evidence/fixture.json
-        run: npx playwright test tests/e2e/functional.spec.ts
-
-      - name: Bounded passive and active OWASP ZAP scan
-        working-directory: app-source
-        run: |
-          chmod 0777 runtime-evidence
-          node scripts/render-zap-plan.mjs "$APP_URL" runtime-evidence/zap-plan.yaml
-          docker run --rm \
-            -v "$PWD:/zap/wrk:rw" \
-            ghcr.io/zaproxy/zaproxy@sha256:8d387b1a63e3425beef4846e39719f5af2a787753af2d8b6558c6257d7a577a2 \
-            zap.sh -cmd -autorun /zap/wrk/runtime-evidence/zap-plan.yaml
-          node scripts/zap-gate.mjs \
-            runtime-evidence/zap-report.json runtime-evidence/zap-summary.json
-
-      - name: k6 preflight smoke
-        working-directory: app-source
-        run: |
-          docker run --rm \
-            -e APP_URL="$APP_URL" \
-            -e VUS=5 \
-            -e DURATION=30s \
-            -v "$PWD:/scripts" \
-            grafana/k6@sha256:e7eeddf1ce2361df6920d925297f487c0ba549c44be242c6a9c22f28d9b08efa run \
-            --summary-export /scripts/runtime-evidence/k6-smoke.json \
-            /scripts/tests/performance/smoke.js
-
-      - name: Run bounded staged k6 trials
-        working-directory: app-source
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "LOAD_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
-          mkdir -p runtime-evidence/k6
-          chmod 0777 runtime-evidence/k6
-          LOAD_TRIALS=3
-          for trial in $(seq 1 "$LOAD_TRIALS"); do
-            docker run --rm \
-              -e APP_URL="$APP_URL" \
-              -e EXPERIMENT_ID="$EXPERIMENT_ID" \
-              -e TRIAL_ID="$trial" \
-              -v "$PWD:/scripts" \
-              grafana/k6@sha256:e7eeddf1ce2361df6920d925297f487c0ba549c44be242c6a9c22f28d9b08efa run \
-              --summary-export "/scripts/runtime-evidence/k6/trial-${trial}.json" \
-              /scripts/tests/performance/load.js
-            if [ "$trial" -lt "$LOAD_TRIALS" ]; then sleep 300; fi
-          done
-          echo "LOAD_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
-
-      - name: Wait for CloudWatch metric publication
-        run: sleep 300
-
-      - name: Collect bounded AWS and CloudWatch evidence
-        shell: bash
-        run: |
-          METRIC_START="$(date -u -d "$LOAD_STARTED_AT -5 minutes" +%Y-%m-%dT%H:%M:%SZ)"
-          METRIC_END="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          bash scripts/collect-experiment-aws.sh \
-            "$TF_WORKING_DIR" "$METRIC_START" "$METRIC_END" experiment-evidence/aws
-
-      - name: Consolidate raw evidence
-        if: always()
-        shell: bash
-        run: |
-          cp -R app-source/runtime-evidence/. experiment-evidence/ || true
-          echo "EXPERIMENT_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
-
-      - name: Remove experiment S3 objects
-        if: always() && hashFiles('experiment-evidence/fixture/fixture.json') != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p experiment-evidence/cleanup
-          PUBLIC_BUCKET="$(terraform -chdir="$TF_WORKING_DIR" output -raw s3_public_bucket_name)"
-          PRIVATE_BUCKET="$(terraform -chdir="$TF_WORKING_DIR" output -raw s3_private_bucket_name)"
-          SELLER_ID="$(jq -r '.users.sellerId' experiment-evidence/fixture/fixture.json)"
-          BUYER_ID="$(jq -r '.users.buyerId' experiment-evidence/fixture/fixture.json)"
-          aws s3 rm "s3://$PUBLIC_BUCKET/products/$SELLER_ID/" --recursive
-          aws s3 rm "s3://$PRIVATE_BUCKET/payments/$BUYER_ID/" --recursive
-          REMAINING_PUBLIC="$(aws s3api list-objects-v2 \
-            --bucket "$PUBLIC_BUCKET" \
-            --prefix "products/$SELLER_ID/" \
-            --query 'length(Contents || `[]`)' --output text)"
-          REMAINING_PRIVATE="$(aws s3api list-objects-v2 \
-            --bucket "$PRIVATE_BUCKET" \
-            --prefix "payments/$BUYER_ID/" \
-            --query 'length(Contents || `[]`)' --output text)"
-          test "$REMAINING_PUBLIC" = "0"
-          test "$REMAINING_PRIVATE" = "0"
-          jq -n \
-            --arg experimentId "$EXPERIMENT_ID" \
-            --argjson remainingPublicObjects "$REMAINING_PUBLIC" \
-            --argjson remainingPrivateObjects "$REMAINING_PRIVATE" \
-            '{
-              experimentId:$experimentId,
-              status:"passed",
-              remainingPublicObjects:$remainingPublicObjects,
-              remainingPrivateObjects:$remainingPrivateObjects
-            }' \
-            > experiment-evidence/cleanup/s3-cleanup.json
-
-      - name: Clean database fixtures
-        if: always() && env.EXPERIMENT_ID != ''
-        run: |
-          bash scripts/run-experiment-fixture.sh \
-            "$TF_WORKING_DIR" cleanup experiment-evidence/cleanup
-
-      - name: Aggregate and validate final evidence
-        if: always()
-        run: |
-          node tools/evidence/aggregate.mjs \
-            experiment-evidence experiment-evidence/experiment-evidence.json
-
-      - name: Upload canonical and raw experiment evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: final-experiment-evidence-${{ github.run_id }}
-          path: |
-            experiment-evidence
-            app-source/playwright-report
+          if-no-files-found: error
           retention-days: 90
 
   reprocess-evidence:
-    name: Reprocess Immutable Experiment Evidence
+    name: Reprocess Immutable Legacy Evidence
     if: inputs.mode == 'reprocess-evidence'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -416,54 +70,52 @@ jobs:
       actions: read
       contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6.0.2
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.0.0
+      - name: Validate source run
+        shell: bash
+        run: '[[ "${{ inputs.source_experiment_run_id }}" =~ ^[0-9]+$ ]]'
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: tools/evidence/package-lock.json
-
       - name: Download immutable source artifact
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_RUN_ID: ${{ inputs.source_experiment_run_id }}
         run: |
-          set -euo pipefail
-          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]]
           gh run download "$SOURCE_RUN_ID" \
             --repo "${{ github.repository }}" \
             --name "final-experiment-evidence-$SOURCE_RUN_ID" \
             --dir source-evidence
-
       - name: Restore original experiment provenance
         env:
           SOURCE_RUN_ID: ${{ inputs.source_experiment_run_id }}
         run: |
           set -euo pipefail
-          CANONICAL="source-evidence/experiment-evidence/experiment-evidence.json"
-          test -f "$CANONICAL"
+          canonical="source-evidence/experiment-evidence/experiment-evidence.json"
+          test -f "$canonical"
           {
-            echo "EXPERIMENT_ID=$(jq -r '.metadata.experimentId' "$CANONICAL")"
-            echo "AWS_REGION=$(jq -r '.metadata.region' "$CANONICAL")"
-            echo "APP_URL=$(jq -r '.metadata.targetUrl' "$CANONICAL")"
-            echo "EXPERIMENT_STARTED_AT=$(jq -r '.metadata.startedAt' "$CANONICAL")"
-            echo "EXPERIMENT_ENDED_AT=$(jq -r '.metadata.endedAt' "$CANONICAL")"
-            echo "APP_COMMIT_SHA=$(jq -r '.provenance.appCommit' "$CANONICAL")"
-            echo "INFRA_COMMIT_SHA=$(jq -r '.provenance.infraCommit' "$CANONICAL")"
-            echo "APP_IMAGE_DIGEST=$(jq -r '.provenance.imageDigest' "$CANONICAL")"
-            echo "APP_PUBLISH_RUN_ID=$(jq -r '.provenance.githubRunIds.appPublish' "$CANONICAL")"
-            echo "TERRAFORM_APPLY_RUN_ID=$(jq -r '.provenance.githubRunIds.terraformApply' "$CANONICAL")"
+            echo "EXPERIMENT_ID=$(jq -r '.metadata.experimentId' "$canonical")"
+            echo "AWS_REGION=$(jq -r '.metadata.region' "$canonical")"
+            echo "APP_URL=$(jq -r '.metadata.targetUrl' "$canonical")"
+            echo "EXPERIMENT_STARTED_AT=$(jq -r '.metadata.startedAt' "$canonical")"
+            echo "EXPERIMENT_ENDED_AT=$(jq -r '.metadata.endedAt' "$canonical")"
+            echo "APP_COMMIT_SHA=$(jq -r '.provenance.appCommit' "$canonical")"
+            echo "INFRA_COMMIT_SHA=$(jq -r '.provenance.infraCommit' "$canonical")"
+            echo "APP_IMAGE_DIGEST=$(jq -r '.provenance.imageDigest' "$canonical")"
+            echo "APP_PUBLISH_RUN_ID=$(jq -r '.provenance.githubRunIds.appPublish' "$canonical")"
+            echo "TERRAFORM_APPLY_RUN_ID=$(jq -r '.provenance.githubRunIds.terraformApply' "$canonical")"
             echo "SOURCE_EXPERIMENT_RUN_ID=$SOURCE_RUN_ID"
           } >> "$GITHUB_ENV"
-
       - name: Rebuild and validate canonical evidence
         run: |
           npm ci --prefix tools/evidence
           node tools/evidence/aggregate.mjs \
             source-evidence/experiment-evidence \
             source-evidence/experiment-evidence/experiment-evidence.json
-
       - name: Upload corrected canonical and raw evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

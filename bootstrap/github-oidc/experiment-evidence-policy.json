@@ -64,22 +64,68 @@
       "Effect": "Allow",
       "Action": [
         "autoscaling:DescribeAutoScalingGroups",
+        "autoscaling:DescribeScalingActivities",
+        "application-autoscaling:DescribeScalingActivities",
+        "application-autoscaling:DescribeScalableTargets",
+        "application-autoscaling:DescribeScalingPolicies",
         "cloudwatch:DescribeAlarms",
         "cloudwatch:GetMetricData",
         "cloudwatch:GetMetricStatistics",
         "elasticloadbalancing:DescribeLoadBalancers",
         "elasticloadbalancing:DescribeListeners",
         "elasticloadbalancing:DescribeTargetHealth",
+        "ec2:DescribeInstances",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeTags",
+        "ec2:DescribeVolumes",
         "logs:DescribeLogStreams",
         "logs:FilterLogEvents",
         "logs:GetLogEvents",
+        "logs:GetQueryResults",
+        "logs:StartQuery",
+        "logs:StopQuery",
         "rds:DescribeDBInstances",
         "rds:DescribeDBProxies",
         "rds:DescribeDBProxyTargets",
         "wafv2:GetWebACL",
-        "wafv2:GetWebACLForResource"
+        "wafv2:GetWebACLForResource",
+        "wafv2:GetSampledRequests"
       ],
       "Resource": "*"
+    },
+    {
+      "Sid": "UseOnlyApprovedRunShellDocument",
+      "Effect": "Allow",
+      "Action": "ssm:SendCommand",
+      "Resource": "arn:aws:ssm:ap-southeast-3::document/AWS-RunShellScript"
+    },
+    {
+      "Sid": "RunCommandsOnlyOnTaggedAgent",
+      "Effect": "Allow",
+      "Action": "ssm:SendCommand",
+      "Resource": "arn:aws:ec2:ap-southeast-3:557947229844:instance/*",
+      "Condition": {
+        "StringLike": {
+          "ssm:resourceTag/ExperimentId": "campaign-*"
+        }
+      }
+    },
+    {
+      "Sid": "ReadOnlyApprovedCommandResults",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:DescribeInstanceInformation",
+        "ssm:GetCommandInvocation",
+        "ssm:ListCommandInvocations",
+        "ssm:ListCommands"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "AssumeOnlyTemporaryDriftRole",
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": "arn:aws:iam::557947229844:role/eepistore-experiment-drift-role"
     },
     {
       "Sid": "VerifyPublishedImageProvenance",

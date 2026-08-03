@@ -11,6 +11,8 @@ collection, dan destroy hemat biaya. Gunakan bersama
   harus hidup permanen.
 - Remote backend Terraform dipertahankan agar apply berikutnya tetap punya state
   terenkripsi dan S3 native lockfile.
+- ECR dikelola melalui state `bootstrap/ecr` dan dipertahankan melintasi Cycle R
+  serta Cycle F agar image digest campaign tidak berubah.
 - Domain dan hosted zone dipertahankan.
 - Raw artifacts tidak di-commit ke Git; simpan di GitHub Actions atau folder
   lokal yang di-ignore.
@@ -59,32 +61,36 @@ collection, dan destroy hemat biaya. Gunakan bersama
    - Route53 dan ACM status.
    - Media CloudFront domain.
 
-## Final Experiment Evidence
+## Research Campaign Evidence
 
-Jalankan hanya setelah controlled apply dan post-apply verification lulus.
+Jalankan hanya setelah baseline source, schema, IAM, dan plan lulus.
 
-1. Jalankan workflow `Final Experiment Evidence` dengan mode
-   `role-preflight`. Approve environment `production`, lalu pastikan artifact
-   `experiment-oidc-preflight` berstatus `passed`. Mode ini hanya menguji asumsi
-   role dan pembacaan lokasi bucket backend; tidak menjalankan Terraform.
-2. Pastikan image aktif menggunakan digest dari app publish run.
-3. Tambahkan secret `AWS_EXPERIMENT_ROLE_ARN` sesuai policy
-   `bootstrap/github-oidc/experiment-evidence-policy.json`.
-4. Jalankan workflow yang sama dari `main` dengan mode `full-experiment`.
-5. Isi app commit SHA, image digest, app publish run ID, Terraform apply run ID,
-   dan target HTTPS. Workflow menjalankan tiga trial k6 secara tetap.
-6. Review artifact `final-experiment-evidence-<run-id>`. Canonical JSON harus
-   berstatus `final`.
-7. Pastikan cleanup database melaporkan seluruh `remaining*` bernilai `0` dan
-   cleanup kedua prefix S3 melaporkan `remainingPublicObjects=0` serta
-   `remainingPrivateObjects=0` sebelum destroy.
+1. Jalankan `sync-experiment-oidc-policy.yml`, review Access Analyzer, policy
+   diff, serta simulation result. Workflow melakukan rollback otomatis bila
+   validasi gagal.
+2. Jalankan `Research Campaign` mode `role-preflight`; artifact harus berstatus
+   `passed` sebelum mutasi workload.
+3. Freeze app commit, infra commit, image digest, campaign ID, input digest,
+   profile, dan batas waktu aktif stack.
+4. Cycle R: jalankan Terraform `apply` dengan `cycle-r`, verifikasi no-change,
+   lalu `destroy`. Artifact pascadestroy harus membuktikan workload state kosong
+   dan ECR bootstrap tetap tersedia.
+5. Cycle F: gunakan input ilmiah yang sama, jalankan apply serta verification,
+   controlled drift/recovery, enam workflow fault ephemeral, bounded WAF rate
+   test, dan runtime suite.
+6. Runtime suite menjalankan fixture, Playwright, bounded ZAP, network isolation,
+   calibration, tiga final k6 trials, CloudWatch collection, dan cleanup data.
+7. Terapkan `experiment-cleanup` melalui saved plan, lalu destroy Cycle F hanya
+   setelah semua artifact wajib lengkap.
+8. Jalankan `Aggregate Research Campaign Evidence` dengan tepat 18 run ID,
+   termasuk tiga saved-plan transition untuk agent, rate-test, dan performance.
+   Canonical evidence harus berstatus `final`, schema `2.0.0`, dan arsip offline
+   harus lolos verifikasi checksum.
 
-Workflow ini tidak memiliki Terraform apply. ZAP dibatasi allowlist/timeout.
-Profil performa reguler k6 menggunakan baseline 2 VU dan peak 3 VU agar berada
-di bawah budget rate rule WAF. Request burst untuk membuktikan deteksi WAF
-harus dijalankan sebagai skenario terpisah dan tidak boleh dicampur dengan
-angka performa reguler. DDoS, request flood, dan target di luar domain project
-dilarang.
+ZAP hanya mencakup origin milik project dan allowlist route read-only. Skenario
+WAF dibatasi 150 request, 2 request/detik, concurrency satu, source `/32`, dan
+berhenti pada blok pertama. DDoS, request flooding, port/CIDR scanning, dan
+target di luar project dilarang.
 
 Setelah perubahan IAM, jalankan `node scripts/validate-experiment-iam.mjs`.
 Hentikan proses jika Access Analyzer mengeluarkan warning/error, izin wajib
@@ -105,15 +111,15 @@ atau hapus cache `.terraform/` yang ignored lalu jalankan `terraform init
 
 1. Jika kode app berubah, jalankan workflow app untuk quality gate, scanning,
    SBOM, attestation, dan publish image.
-2. Jika ECR repo belum ada setelah destroy, buat ECR terlebih dahulu melalui
-   workflow Terraform `action=bootstrap-ecr`. Review targeted saved plan dan
-   approve environment `production` sebelum menjalankan `publish-image`.
+2. Jika ECR bootstrap belum ada, jalankan `bootstrap-ecr.yml` dengan
+   `action=apply`. Review saved plan dan approve environment `production`
+   sebelum menjalankan `publish-image`.
 3. Gunakan image digest URI dari output workflow untuk update
    `TF_VAR_APP_IMAGE_URI`.
 4. Terraform menjadi satu-satunya pemilik task definition dan ECS service.
    Workflow aplikasi tidak boleh melakukan register task definition atau update
    service.
-5. Setelah stack aktif, jalankan workflow `Final Experiment Evidence` untuk
+5. Setelah stack aktif, jalankan mode campaign yang diregistrasi untuk
    Playwright, bounded ZAP, tiga trial k6, CloudWatch, dan cleanup fixture.
 6. Simpan metadata run dan artifact di `docs/evidence-register.md`.
 
@@ -124,7 +130,6 @@ atau hapus cache `.terraform/` yang ignored lalu jalankan `terraform init
    - harus destroy-only,
    - tidak boleh ada create/update besar tanpa alasan,
    - pre-step project-scoped untuk deletion protection RDS/ALB aktif,
-   - ECR pre-clean aktif,
    - purge current objects, versions, dan delete markers hanya menargetkan
      bucket public media, private documents, dan ALB logs,
    - bucket remote state tidak masuk target purge maupun destroy,
@@ -134,7 +139,8 @@ atau hapus cache `.terraform/` yang ignored lalu jalankan `terraform init
    - cek artifact `post-destroy-verification` berisi `PASS terraform-state-empty`,
    - hapus final RDS snapshot jika muncul dan tidak diperlukan,
    - cek secret sisa; scheduled deletion adalah kondisi yang diharapkan,
-   - cek resource mahal: NAT, RDS, ALB, ECS/EC2, ECR, S3 workload, CloudFront.
+   - cek resource mahal: NAT, RDS, ALB, ECS/EC2, S3 workload, dan CloudFront;
+     tepat satu ECR bootstrap boleh tetap ada selama campaign.
 5. Jangan hapus backend remote state kecuali target berubah menjadi nol biaya
    absolut dan siap bootstrap ulang nanti.
 
@@ -143,8 +149,8 @@ saved plan lama. Jalankan workflow `action=destroy` lagi agar refresh state dan
 plan baru mencerminkan resource tersisa. Approve hanya jika plan recovery tetap
 `0 create`, `0 update`, dan seluruh aksi adalah destroy yang diharapkan.
 
-Catatan implementasi: variable `force_destroy`, `ecr_force_delete`, atau
-deletion-protection override tidak dapat diandalkan untuk mengubah atribut
+Catatan implementasi: variable `force_destroy` atau deletion-protection
+override tidak dapat diandalkan untuk mengubah atribut
 resource yang langsung dihapus oleh destroy plan. Karena itu workflow memakai
 pre-step eksplisit, terbatas pada nama/prefix workload Eepistore, sebelum
 menjalankan saved plan yang telah direview.
@@ -154,11 +160,10 @@ menjalankan saved plan yang telah direview.
 - AWS Billing/Cost Explorer tetap perlu dicek manual karena data biaya tidak
   selalu real-time.
 - Resource yang harus tidak aktif setelah destroy: NAT Gateway, RDS instance,
-  ALB, ECS tasks/container instances, EC2 ECS instances, ECR repo workload, S3
-  workload buckets, CloudFront media distribution, RDS snapshots yang tidak
-  diperlukan.
+  ALB, ECS tasks/container instances, EC2 ECS instances, S3 workload buckets,
+  CloudFront media distribution, dan RDS snapshots yang tidak diperlukan.
 - Resource yang sengaja boleh tersisa: domain, hosted zone, Terraform state
-  bucket, lockfile object, dan KMS backend.
+  bucket, lockfile object, KMS backend, serta ECR bootstrap selama campaign.
 
 ## Final Experiment Lineage
 

@@ -74,6 +74,11 @@ assertSimulation(
 );
 assertSimulation(
   "allowed",
+  ["sts:AssumeRole"],
+  [`arn:aws:iam::${accountId}:role/eepistore-experiment-drift-role`],
+);
+assertSimulation(
+  "allowed",
   ["s3:GetObject"],
   ["arn:aws:s3:::eepistore-dev-terraform-state/eepistore/dev/terraform.tfstate"],
 );
@@ -106,6 +111,19 @@ assertSimulation(
   ["s3:DeleteObject"],
   ["arn:aws:s3:::eepistore-dev-public-media-example/products/experiment-user/image.png"],
 );
+assertSimulation(
+  "allowed",
+  ["ssm:SendCommand"],
+  ["arn:aws:ssm:ap-southeast-3::document/AWS-RunShellScript"],
+);
+assertSimulation(
+  "allowed",
+  ["ssm:SendCommand"],
+  [`arn:aws:ec2:${region}:${accountId}:instance/i-0123456789abcdef0`],
+  [
+    "ContextKeyName=ssm:resourceTag/ExperimentId,ContextKeyValues=campaign-20260804-aaaaaaa-bbbbbbb,ContextKeyType=string",
+  ],
+);
 
 const deniedActions = [
   "iam:CreateRole",
@@ -117,6 +135,9 @@ const deniedActions = [
   "s3:DeleteBucket",
   "secretsmanager:PutSecretValue",
   "cloudformation:CreateStack",
+  "ssm:CreateDocument",
+  "ssm:DeleteDocument",
+  "wafv2:UpdateWebACL",
 ];
 assertSimulation("implicitDeny", deniedActions, ["*"]);
 
@@ -126,7 +147,7 @@ fs.writeFileSync(
     {
       status: "passed",
       roleArn,
-      allowedChecks: 7,
+      allowedChecks: 10,
       deniedActions: deniedActions.length,
     },
     null,

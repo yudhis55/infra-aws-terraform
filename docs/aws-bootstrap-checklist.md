@@ -4,10 +4,9 @@ Gunakan checklist ini setelah ACM certificate untuk `eepistore.web.id` sudah
 berstatus `Issued`. Jangan jalankan `apply` production sebelum semua nilai
 placeholder diganti dengan nilai asli.
 
-Catatan status pasca-destroy: remote backend tetap ada, tetapi workload
-resource seperti ECR, ECS, RDS, ALB, S3 upload, dan CloudFront sudah dihapus.
-Jika butuh image baru, buat ECR terlebih dahulu sebelum menjalankan workflow app
-`publish-image`.
+Catatan status pasca-destroy: remote backend dan ECR bootstrap dipertahankan,
+sedangkan ECS, RDS, ALB, S3 workload, serta CloudFront dihapus. Jika ECR belum
+pernah dibootstrap, jalankan workflow khusus sebelum app `publish-image`.
 
 ## 1. Domain dan Certificate
 
@@ -37,7 +36,7 @@ Infra repository variables:
 - [ ] `TF_VAR_ENABLE_HTTPS=true`
 - [ ] `TF_VAR_ACM_CERTIFICATE_ARN=<arn-acm-ap-southeast-3>`
 - [ ] `TF_VAR_APP_BASE_URL=https://eepistore.web.id`
-- [ ] `TF_VAR_APP_IMAGE_URI=<ecr-url>:<commit-sha>`
+- [ ] `TF_VAR_APP_IMAGE_URI=<ecr-url>@sha256:<digest>`
 
 Infra repository secrets:
 
@@ -68,13 +67,14 @@ App repository secrets:
 
 ## 5. ECR dan Image Aplikasi
 
-- [ ] Jika ECR tidak ada setelah destroy, jalankan workflow Terraform dengan
-      `action=bootstrap-ecr`.
-- [ ] Review targeted plan dan approve environment `production`; pastikan plan
-      hanya berisi module ECR dan KMS terkait.
+- [ ] Jika ECR bootstrap belum ada, jalankan `bootstrap-ecr.yml` dengan
+      `action=apply`.
+- [ ] Review saved plan dan approve environment `production`; pastikan plan
+      hanya berisi module ECR beserta KMS terkait.
 - [ ] Simpan artifact `ecr-bootstrap-verification`.
 - [ ] Build aplikasi lulus secara lokal dan/atau GitHub Actions.
-- [ ] Push image dengan tag commit SHA, bukan `latest`.
+- [ ] Push image dengan tag commit SHA, rekam digest, dan jangan gunakan
+      `latest`.
 - [ ] Isi `TF_VAR_APP_IMAGE_URI` memakai URI digest immutable dari workflow app.
 
 ## 6. Terraform Plan Review

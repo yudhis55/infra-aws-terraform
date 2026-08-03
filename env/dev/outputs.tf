@@ -53,11 +53,6 @@ output "asg_name" {
   value       = module.ecs.asg_name
 }
 
-output "ecr_repository_url" {
-  description = "ECR repository URL used by the application pipeline"
-  value       = module.ecr.repository_url
-}
-
 output "rds_instance_id" {
   description = "RDS instance identifier"
   value       = module.rds.rds_instance_id
@@ -120,4 +115,39 @@ output "monitoring_dashboard_names" {
     performance    = module.monitoring.performance_dashboard_name
     security       = module.monitoring.security_dashboard_name
   }
+}
+
+output "rds_instance_address" {
+  description = "Private RDS instance hostname used only by the isolation test allowlist"
+  value       = module.rds.rds_instance_address
+}
+
+output "experiment_mode" {
+  description = "Active opt-in experiment mode"
+  value       = var.experiment_mode
+}
+
+output "experiment_agent_instance_id" {
+  description = "Private SSM agent ID, or null when experiments are disabled"
+  value       = module.experiment.instance_id
+}
+
+output "experiment_agent_private_ip" {
+  description = "Private agent IP used for Flow Log correlation"
+  value       = module.experiment.private_ip
+}
+
+output "experiment_source_ipv4" {
+  description = "Public /32 source used by temporary WAF controls"
+  value       = local.experiment_enabled ? local.experiment_source_ipv4 : null
+}
+
+output "experiment_drift_role_arn" {
+  description = "Scoped role for the single-tag drift test"
+  value       = module.experiment.drift_role_arn
+}
+
+output "experiment_drift_target_arn" {
+  description = "Only resource authorized for the drift mutation"
+  value       = module.experiment.drift_target_arn
 }

@@ -54,6 +54,9 @@ Simpan ARN role experiment sebagai secret repository
 Jalankan `node scripts/validate-experiment-iam.mjs` setelah policy role
 experiment diperbarui. Script tersebut memeriksa IAM Access Analyzer, operasi
 yang memang harus diizinkan, dan operasi mutasi infrastruktur yang harus tetap
-`implicitDeny`. Workflow `Final Experiment Evidence` juga menyediakan mode
-default `role-preflight` untuk membuktikan asumsi OIDC tanpa membutuhkan
-workload aktif.
+`implicitDeny`. Workflow `Research Campaign` menyediakan mode
+`role-preflight` untuk membuktikan asumsi OIDC tanpa membutuhkan workload
+aktif. Workflow `sync-experiment-oidc-policy.yml` menjadi jalur terkontrol untuk
+memperbarui policy, memvalidasinya, dan memulihkan versi sebelumnya bila gate
+gagal. `experiment-evidence.yml` hanya dipertahankan untuk reprocess evidence
+legacy schema `1.0.0`.
