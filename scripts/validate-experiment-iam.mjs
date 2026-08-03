@@ -5,12 +5,71 @@ import path from "node:path";
 const roleArn =
   process.argv[2] ?? "arn:aws:iam::557947229844:role/eepistore-infra-experiment-role";
 const outputDirectory = process.argv[3] ?? "iam-validation-evidence";
+const validationMode = process.argv[4] ?? "simulate";
 const accountId = "557947229844";
 const region = "ap-southeast-3";
 const clusterArn = `arn:aws:ecs:${region}:${accountId}:cluster/eepistore-cluster`;
 const aws = process.platform === "win32" ? "aws.exe" : "aws";
 
 fs.mkdirSync(outputDirectory, { recursive: true });
+
+if (validationMode === "structure") {
+  const policy = JSON.parse(
+    fs.readFileSync("bootstrap/github-oidc/experiment-evidence-policy.json", "utf8"),
+  );
+  const statements = policy.Statement ?? [];
+  const allowedActions = statements
+    .filter(({ Effect }) => Effect === "Allow")
+    .flatMap(({ Action }) => (Array.isArray(Action) ? Action : [Action]));
+  const prohibitedActions = [
+    "iam:CreateRole",
+    "iam:PutRolePolicy",
+    "ecs:RegisterTaskDefinition",
+    "ecs:UpdateService",
+    "ec2:TerminateInstances",
+    "rds:DeleteDBInstance",
+    "s3:DeleteBucket",
+    "secretsmanager:PutSecretValue",
+    "wafv2:UpdateWebACL",
+  ];
+  const requiredSids = [
+    "ReadTerraformState",
+    "UseOnlyApprovedRunShellDocument",
+    "RunCommandsOnlyOnTaggedAgent",
+    "AssumeOnlyTemporaryDriftRole",
+    "VerifyPublishedImageProvenance",
+  ];
+  const presentSids = new Set(statements.map(({ Sid }) => Sid));
+  const violations = prohibitedActions.filter((action) => allowedActions.includes(action));
+  const missingSids = requiredSids.filter((sid) => !presentSids.has(sid));
+  const taggedAgent = statements.find(({ Sid }) => Sid === "RunCommandsOnlyOnTaggedAgent");
+  const validAgentScope =
+    taggedAgent?.Resource === "arn:aws:ec2:ap-southeast-3:557947229844:instance/*" &&
+    taggedAgent?.Condition?.StringLike?.["ssm:resourceTag/ExperimentId"] === "campaign-*";
+  if (violations.length || missingSids.length || !validAgentScope) {
+    throw new Error(JSON.stringify({ violations, missingSids, validAgentScope }, null, 2));
+  }
+  fs.writeFileSync(
+    path.join(outputDirectory, "policy-structure.json"),
+    `${JSON.stringify(
+      {
+        status: "passed",
+        validationMode,
+        roleArn,
+        requiredStatements: requiredSids.length,
+        prohibitedActions: prohibitedActions.length,
+        validAgentScope,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  process.exit(0);
+}
+
+if (validationMode !== "simulate") {
+  throw new Error(`Unsupported validation mode: ${validationMode}`);
+}
 
 function runAws(args) {
   const result = spawnSync(aws, args, { encoding: "utf8" });
