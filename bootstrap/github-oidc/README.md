@@ -13,7 +13,8 @@ permission miliknya sendiri.
   policy `plan-backend-policy.json` untuk membaca state serta mengelola S3
   lockfile. Policy inline juga dapat membaca secret runtime project saat
   Terraform me-refresh resource, dengan dekripsi dibatasi ke alias KMS RDS
-  environment.
+  environment. Scope object backend dibatasi ke state workload
+  `eepistore/dev/*` dan prerequisite ECR `eepistore/bootstrap/ecr/*`.
 - `eepistore-infra-apply-role`: memakai AWS managed `PowerUserAccess` dan inline
   policy `apply-iam-policy.json` untuk IAM resource project yang tidak dicakup
   PowerUserAccess.
@@ -62,3 +63,8 @@ aktif. Workflow `sync-experiment-oidc-policy.yml` menjadi jalur terkontrol untuk
 memperbarui policy, memvalidasinya, dan memulihkan versi sebelumnya bila gate
 gagal. `experiment-evidence.yml` hanya dipertahankan untuk reprocess evidence
 legacy schema `1.0.0`.
+
+Perubahan akses backend plan role dijalankan melalui
+`sync-backend-oidc-policy.yml`. Workflow tersebut memvalidasi dua prefix state
+yang diizinkan, memakai approval environment `production`, membandingkan policy
+aktual dengan source, dan memulihkan policy sebelumnya bila sinkronisasi gagal.

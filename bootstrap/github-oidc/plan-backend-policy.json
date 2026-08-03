@@ -18,7 +18,10 @@
         "s3:GetObject",
         "s3:PutObject"
       ],
-      "Resource": "arn:aws:s3:::eepistore-dev-terraform-state/eepistore/dev/*"
+      "Resource": [
+        "arn:aws:s3:::eepistore-dev-terraform-state/eepistore/bootstrap/ecr/*",
+        "arn:aws:s3:::eepistore-dev-terraform-state/eepistore/dev/*"
+      ]
     },
     {
       "Sid": "UseTerraformStateKey",
