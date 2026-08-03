@@ -106,6 +106,7 @@ resource "aws_instance" "agent" {
   iam_instance_profile        = aws_iam_instance_profile.agent[0].name
   user_data_replace_on_change = true
   monitoring                  = true
+  ebs_optimized               = true
 
   metadata_options {
     http_endpoint = "enabled"

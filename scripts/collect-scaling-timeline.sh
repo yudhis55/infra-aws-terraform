@@ -26,6 +26,8 @@ started_epoch="$(date +%s)"
 while [ "$(( $(date +%s) - started_epoch ))" -le "$duration_seconds" ]; do
   timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   ecs="$(aws ecs describe-services --cluster "$cluster" --services "$service" --query 'services[0].{desired:desiredCount,running:runningCount,pending:pendingCount}' --output json)"
+  # JMESPath backticks are literals for the AWS CLI, not shell expansion.
+  # shellcheck disable=SC2016
   capacity="$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$asg" --query 'AutoScalingGroups[0].{desired:DesiredCapacity,inService:length(Instances[?LifecycleState==`InService`]),pending:length(Instances[?starts_with(LifecycleState, `Pending`)]),terminating:length(Instances[?starts_with(LifecycleState, `Terminating`)])}' --output json)"
   jq -n --arg timestamp "$timestamp" --argjson ecs "$ecs" --argjson asg "$capacity" \
     '{timestamp:$timestamp, ecs:$ecs, asg:$asg}' >> "$tmp"

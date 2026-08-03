@@ -190,9 +190,11 @@ fi
 
 if [ -n "$cluster_name" ] && [ -n "$service_name" ]; then
   if wait_for_ecs_capacity "$cluster_name"; then
-    aws ecs wait services-stable --cluster "$cluster_name" --services "$service_name" \
-      && log_status "PASS ecs-service-stable" \
-      || log_status "FAIL ecs-service-stable"
+    if aws ecs wait services-stable --cluster "$cluster_name" --services "$service_name"; then
+      log_status "PASS ecs-service-stable"
+    else
+      log_status "FAIL ecs-service-stable"
+    fi
   fi
 
   capture ecs-service aws ecs describe-services --cluster "$cluster_name" --services "$service_name"
