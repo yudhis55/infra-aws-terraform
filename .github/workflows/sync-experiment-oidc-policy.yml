@@ -80,7 +80,8 @@ jobs:
             --policy-document file://bootstrap/github-oidc/experiment-evidence-policy.json
           node scripts/validate-experiment-iam.mjs \
             "arn:aws:iam::557947229844:role/$ROLE_NAME" \
-            oidc-policy-evidence/validation
+            oidc-policy-evidence/validation \
+            structure
           aws iam get-role-policy --role-name "$ROLE_NAME" --policy-name "$POLICY_NAME" > oidc-policy-evidence/policy-after.json
           jq -S '.PolicyDocument' oidc-policy-evidence/policy-after.json > oidc-policy-evidence/policy-after-document.json
           jq -S '.' bootstrap/github-oidc/experiment-evidence-policy.json > oidc-policy-evidence/policy-source-normalized.json
