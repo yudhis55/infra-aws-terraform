@@ -1,0 +1,97 @@
+name: Sync Terraform Backend OIDC Policy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type SYNC-BACKEND-POLICY to continue
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-backend-oidc-policy-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: inputs.confirmation == 'SYNC-BACKEND-POLICY'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ap-southeast-3
+      ROLE_NAME: eepistore-infra-plan-role
+      POLICY_NAME: EepistoreTerraformStateAccess
+      POLICY_FILE: bootstrap/github-oidc/plan-backend-policy.json
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ secrets.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Validate exact source policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p backend-policy-evidence
+          test "$(aws sts get-caller-identity --query Account --output text)" = "557947229844"
+          node scripts/validate-backend-policy.mjs "$POLICY_FILE"
+          aws accessanalyzer validate-policy \
+            --policy-document "file://$POLICY_FILE" \
+            --policy-type IDENTITY_POLICY \
+            > backend-policy-evidence/access-analyzer.json
+          jq -e '[.findings[] | select(.findingType != "SUGGESTION")] | length == 0' backend-policy-evidence/access-analyzer.json > /dev/null
+      - name: Capture current inline policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_names="$(aws iam list-role-policies --role-name "$ROLE_NAME" --query 'PolicyNames' --output json)"
+          jq -e --arg expected "$POLICY_NAME" 'length == 1 and .[0] == $expected' <<< "$current_names" > /dev/null
+          aws iam get-role-policy \
+            --role-name "$ROLE_NAME" \
+            --policy-name "$POLICY_NAME" \
+            > backend-policy-evidence/policy-before.json
+          jq '.PolicyDocument' backend-policy-evidence/policy-before.json > backend-policy-evidence/policy-before-document.json
+      - name: Sync and verify exact policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          rollback() {
+            aws iam put-role-policy \
+              --role-name "$ROLE_NAME" \
+              --policy-name "$POLICY_NAME" \
+              --policy-document file://backend-policy-evidence/policy-before-document.json
+          }
+          trap rollback ERR
+          aws iam put-role-policy \
+            --role-name "$ROLE_NAME" \
+            --policy-name "$POLICY_NAME" \
+            --policy-document "file://$POLICY_FILE"
+          aws iam get-role-policy \
+            --role-name "$ROLE_NAME" \
+            --policy-name "$POLICY_NAME" \
+            > backend-policy-evidence/policy-after.json
+          jq -S '.PolicyDocument' backend-policy-evidence/policy-after.json > backend-policy-evidence/policy-after-document.json
+          jq -S '.' "$POLICY_FILE" > backend-policy-evidence/policy-source-normalized.json
+          diff -u backend-policy-evidence/policy-source-normalized.json backend-policy-evidence/policy-after-document.json > backend-policy-evidence/policy-diff.txt
+          node scripts/validate-backend-policy.mjs backend-policy-evidence/policy-after-document.json
+          trap - ERR
+          jq -n --arg runId "$GITHUB_RUN_ID" --arg role "$ROLE_NAME" --arg policy "$POLICY_NAME" \
+            '{status:"passed",githubRunId:$runId,roleName:$role,policyName:$policy}' \
+            > backend-policy-evidence/result.json
+      - name: Upload backend policy evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: backend-oidc-policy-sync-${{ github.run_id }}
+          path: backend-policy-evidence
+          if-no-files-found: error
+          retention-days: 90
