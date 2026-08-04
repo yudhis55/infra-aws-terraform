@@ -19,7 +19,7 @@ cloudfront="$(aws cloudfront list-distributions --output json | jq --arg alias "
 active_secrets="$(aws secretsmanager list-secrets --include-planned-deletion --filters Key=name,Values="$project-$environment-app-secrets" --query 'length(SecretList[?DeletedDate == null])' --output json)"
 
 cluster_json="$(aws ecs describe-clusters --clusters "$project-cluster" --include ATTACHMENTS --query 'clusters[0]' --output json)"
-if [ "$cluster_json" = null ]; then
+if [ -z "$cluster_json" ] || [ "$cluster_json" = null ] || [ "$cluster_json" = None ]; then
   cluster_running=0
   cluster_pending=0
   cluster_instances=0
