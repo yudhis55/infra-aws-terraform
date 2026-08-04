@@ -15,7 +15,7 @@ rds="$(aws rds describe-db-instances --db-instance-identifier "$project-$environ
 proxies="$(aws rds describe-db-proxies --db-proxy-name "$project-$environment-proxy" --query 'length(DBProxies)' --output json 2>/dev/null || echo 0)"
 bootstrap_ecr="$(aws ecr describe-repositories --repository-names "$project-repo" --query 'length(repositories)' --output json 2>/dev/null || echo 0)"
 buckets="$(aws s3api list-buckets --query "length(Buckets[?starts_with(Name, '$project-$environment-public-media-') || starts_with(Name, '$project-$environment-private-documents-') || starts_with(Name, '$project-$environment-alb-logs-')])" --output json)"
-cloudfront="$(aws cloudfront list-distributions --query "length(DistributionList.Items[?Aliases.Items && contains(Aliases.Items, 'media.eepistore.web.id')])" --output json)"
+cloudfront="$(aws cloudfront list-distributions --output json | jq --arg alias "media.eepistore.web.id" '[.DistributionList.Items[]? | select(any(.Aliases.Items[]?; . == $alias))] | length')"
 active_secrets="$(aws secretsmanager list-secrets --include-planned-deletion --filters Key=name,Values="$project-$environment-app-secrets" --query 'length(SecretList[?DeletedDate == null])' --output json)"
 
 cluster_json="$(aws ecs describe-clusters --clusters "$project-cluster" --include ATTACHMENTS --query 'clusters[0]' --output json)"
