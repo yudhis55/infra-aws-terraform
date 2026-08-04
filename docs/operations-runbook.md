@@ -48,6 +48,16 @@ collection, dan destroy hemat biaya. Gunakan bersama
 6. Jika apply gagal, jangan lanjut deploy app terpisah. Analisis state, events,
    dan resource aktual terlebih dahulu.
 
+### Recovery Log Group di Luar State
+
+Jika apply berhenti dengan `ResourceAlreadyExistsException` untuk
+`/aws/vpc/flowlogs/eepistore`, jangan hapus log group karena dapat berisi log
+eksperimen sebelumnya. Jalankan workflow `Recover Existing Flow Log Group
+State` dengan konfirmasi `IMPORT-FLOW-LOG-GROUP`. Workflow hanya melanjutkan
+jika alamat Terraform belum dikelola dan AWS mengembalikan tepat satu log group
+dengan nama exact. Import dibatalkan dari state bila post-check gagal. Setelah
+import berhasil, jalankan plan baru; jangan menggunakan saved plan yang gagal.
+
 ## Post-Apply Verification
 
 1. Gunakan artifact otomatis dari `scripts/verify-aws-post-apply.sh`.
