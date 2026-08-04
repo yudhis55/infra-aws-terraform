@@ -100,7 +100,8 @@ App repository secrets:
 
 - [ ] Pastikan workflow app hanya memublikasikan image digest dan tidak mengubah ECS.
 - [ ] Pastikan Terraform menjadi satu-satunya pemilik task definition dan ECS service.
-- [ ] Pastikan migration task selesai dengan exit code `0`.
+- [ ] Pastikan RDS Proxy target `AVAILABLE` pada `proxy-readiness.json` sebelum migration task dimulai.
+- [ ] Pastikan migration task selesai dengan exit code `0` dan log CloudWatch tersimpan dalam artifact.
 - [ ] Pastikan ECS service stable.
 - [ ] Jalankan workflow runtime evidence setelah stack aktif.
 - [ ] Simpan artifact ZAP, k6, health, readiness, dan verifikasi AWS.

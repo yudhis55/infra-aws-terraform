@@ -43,9 +43,13 @@ collection, dan destroy hemat biaya. Gunakan bersama
 2. Tunggu job validate/scan dan plan selesai.
 3. Review `tfplan.txt` dari run apply yang sama, bukan plan lama.
 4. Approve environment `production` hanya jika review gate lulus.
-5. Setelah apply, simpan link run, run ID, artifact `terraform-plan`, dan
+5. Workflow menunggu target RDS Proxy berstatus `AVAILABLE` sebelum menjalankan
+   one-off Prisma migration. Review `proxy-readiness.json`, `task.json`, dan
+   `logs.json` dalam artifact `migration-evidence`; migration tidak boleh
+   diulang manual di luar workflow untuk menutupi readiness race.
+6. Setelah apply, simpan link run, run ID, artifact `terraform-plan`, dan
    artifact `post-apply-verification` di `docs/evidence-register.md`.
-6. Jika apply gagal, jangan lanjut deploy app terpisah. Analisis state, events,
+7. Jika apply gagal, jangan lanjut deploy app terpisah. Analisis state, events,
    dan resource aktual terlebih dahulu.
 
 ### Recovery Log Group di Luar State
@@ -139,6 +143,8 @@ atau hapus cache `.terraform/` yang ignored lalu jalankan `terraform init
 2. Review plan sebelum approval:
    - harus destroy-only,
    - tidak boleh ada create/update besar tanpa alasan,
+   - pre-step men-suspend target tracking, menurunkan desired count ECS ke nol,
+     dan menunggu task serta target ALB selesai drain,
    - pre-step project-scoped untuk deletion protection RDS/ALB aktif,
    - purge current objects, versions, dan delete markers hanya menargetkan
      bucket public media, private documents, dan ALB logs,
@@ -146,6 +152,8 @@ atau hapus cache `.terraform/` yang ignored lalu jalankan `terraform init
    - keputusan final snapshot jelas.
 3. Approve environment `production` setelah review lulus.
 4. Setelah destroy:
+   - cek `preparation/result.json` berstatus `passed` atau `not-found` untuk
+     recovery stack yang service-nya sudah tidak ada,
    - cek artifact `post-destroy-verification` berisi `PASS terraform-state-empty`,
    - hapus final RDS snapshot jika muncul dan tidak diperlukan,
    - cek secret sisa; scheduled deletion adalah kondisi yang diharapkan,
@@ -164,6 +172,10 @@ override tidak dapat diandalkan untuk mengubah atribut
 resource yang langsung dihapus oleh destroy plan. Karena itu workflow memakai
 pre-step eksplisit, terbatas pada nama/prefix workload Eepistore, sebelum
 menjalankan saved plan yang telah direview.
+
+Jangan mengandalkan timeout delete ECS sebagai mekanisme drain. Workflow harus
+menyelesaikan scale-to-zero dan deregistrasi target sebelum Terraform destroy;
+timeout hanya menjadi batas recovery terakhir.
 
 ## Cost Audit Notes
 
