@@ -98,7 +98,9 @@ jobs:
         run: |
           bash -n scripts/*.sh
           shellcheck scripts/*.sh
-          bash scripts/verify-aws-post-destroy.test.sh
+          for test_script in scripts/*.test.sh; do
+            bash "$test_script"
+          done
           node --check scripts/validate-experiment-iam.mjs
           jq empty bootstrap/github-oidc/*.json
           npm ci --prefix tools/evidence
@@ -378,6 +380,9 @@ jobs:
         with:
           name: terraform-saved-plan-${{ github.run_id }}
           path: ${{ env.TF_WORKING_DIR }}
+      - name: Drain ECS service before destroy
+        if: inputs.action == 'destroy'
+        run: bash scripts/prepare-ecs-destroy.sh "${{ env.TF_WORKING_DIR }}" destroy-evidence/preparation
       - name: Disable workload deletion protection
         if: inputs.action == 'destroy'
         shell: bash
