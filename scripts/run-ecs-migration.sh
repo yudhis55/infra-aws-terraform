@@ -29,9 +29,46 @@ trap write_timing EXIT
 cluster="$(terraform -chdir="$tf_dir" output -raw ecs_cluster_name)"
 service="$(terraform -chdir="$tf_dir" output -raw ecs_service_name)"
 log_group="$(terraform -chdir="$tf_dir" output -raw ecs_log_group_name)"
+proxy="$(terraform -chdir="$tf_dir" output -raw rds_proxy_id)"
 task_definition="$(aws ecs describe-services \
   --cluster "$cluster" --services "$service" \
   --query 'services[0].taskDefinition' --output text)"
+
+proxy_poll_interval="${MIGRATION_PROXY_POLL_INTERVAL_SECONDS:-15}"
+proxy_max_attempts="${MIGRATION_PROXY_MAX_ATTEMPTS:-60}"
+proxy_ready=false
+proxy_wait_started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+proxy_wait_started_epoch="$(date +%s)"
+
+for ((attempt = 1; attempt <= proxy_max_attempts; attempt++)); do
+  if aws rds describe-db-proxy-targets \
+    --db-proxy-name "$proxy" > "$out_dir/proxy-targets.json" 2> "$out_dir/proxy-targets-error.txt" && \
+    jq -e '.Targets | length > 0 and all(.TargetHealth.State == "AVAILABLE")' \
+      "$out_dir/proxy-targets.json" > /dev/null; then
+    proxy_ready=true
+    rm -f "$out_dir/proxy-targets-error.txt"
+    break
+  fi
+  if [ "$attempt" -lt "$proxy_max_attempts" ]; then sleep "$proxy_poll_interval"; fi
+done
+
+proxy_wait_ended="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+proxy_wait_ended_epoch="$(date +%s)"
+proxy_status="failed"
+if [ "$proxy_ready" = true ]; then proxy_status="passed"; fi
+jq -n \
+  --arg status "$proxy_status" \
+  --arg proxy "$proxy" \
+  --arg startedAt "$proxy_wait_started" \
+  --arg endedAt "$proxy_wait_ended" \
+  --argjson durationSeconds "$((proxy_wait_ended_epoch - proxy_wait_started_epoch))" \
+  '{status:$status,proxy:$proxy,startedAt:$startedAt,endedAt:$endedAt,durationSeconds:$durationSeconds}' \
+  > "$out_dir/proxy-readiness.json"
+
+if [ "$proxy_ready" != true ]; then
+  echo "RDS Proxy target did not become AVAILABLE before migration" >&2
+  exit 1
+fi
 
 task_arn="$(aws ecs run-task \
   --cluster "$cluster" \
