@@ -1,0 +1,113 @@
+name: Controlled Terraform Orphan Recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      resource:
+        description: Reviewed orphan resource to adopt into Terraform state
+        required: true
+        type: choice
+        options: [vpc-flow-log-group]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-workload-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  TF_WORKING_DIR: env/dev
+  TF_VERSION: "1.14.4"
+  TF_VAR_project_name: ${{ vars.TF_VAR_PROJECT_NAME }}
+  TF_VAR_app_image_uri: ${{ vars.TF_VAR_APP_IMAGE_URI }}
+  TF_VAR_domain_name: ${{ vars.TF_VAR_DOMAIN_NAME }}
+  TF_VAR_route53_zone_id: ${{ vars.TF_VAR_ROUTE53_ZONE_ID }}
+  TF_VAR_enable_https: ${{ vars.TF_VAR_ENABLE_HTTPS }}
+  TF_VAR_acm_certificate_arn: ${{ vars.TF_VAR_ACM_CERTIFICATE_ARN }}
+  TF_VAR_app_base_url: ${{ vars.TF_VAR_APP_BASE_URL }}
+
+jobs:
+  import:
+    name: Review and Import Orphan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ secrets.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Terraform init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform init
+      - name: Verify orphan preconditions
+        id: preconditions
+        shell: bash
+        run: |
+          set -euo pipefail
+          address="module.security.aws_cloudwatch_log_group.flow_logs"
+          resource_name="/aws/vpc/flowlogs/${TF_VAR_project_name}"
+          mkdir -p recovery-evidence
+
+          if terraform -chdir="$TF_WORKING_DIR" state list | grep -Fxq "$address"; then
+            echo "Refusing import: $address is already tracked." >&2
+            exit 1
+          fi
+
+          matches="$(aws logs describe-log-groups \
+            --log-group-name-prefix "$resource_name" \
+            --query "length(logGroups[?logGroupName=='$resource_name'])" \
+            --output text)"
+          test "$matches" = "1"
+
+          jq -n \
+            --arg status passed \
+            --arg address "$address" \
+            --arg resourceName "$resource_name" \
+            --arg runId "$GITHUB_RUN_ID" \
+            '{status:$status,address:$address,resourceName:$resourceName,githubRunId:$runId}' \
+            > recovery-evidence/preconditions.json
+          echo "address=$address" >> "$GITHUB_OUTPUT"
+          echo "resource_name=$resource_name" >> "$GITHUB_OUTPUT"
+      - name: Import reviewed orphan
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform import '${{ steps.preconditions.outputs.address }}' '${{ steps.preconditions.outputs.resource_name }}'
+      - name: Verify state adoption
+        shell: bash
+        run: |
+          set -euo pipefail
+          address='${{ steps.preconditions.outputs.address }}'
+          resource_name='${{ steps.preconditions.outputs.resource_name }}'
+          terraform -chdir="$TF_WORKING_DIR" state show "$address" > recovery-evidence/imported-state.txt
+          terraform -chdir="$TF_WORKING_DIR" state list | grep -Fxq "$address"
+          matches="$(aws logs describe-log-groups \
+            --log-group-name-prefix "$resource_name" \
+            --query "length(logGroups[?logGroupName=='$resource_name'])" \
+            --output text)"
+          test "$matches" = "1"
+          jq -n \
+            --arg status passed \
+            --arg address "$address" \
+            --arg resourceName "$resource_name" \
+            --arg runId "$GITHUB_RUN_ID" \
+            '{status:$status,address:$address,resourceName:$resourceName,githubRunId:$runId}' \
+            > recovery-evidence/result.json
+      - name: Upload recovery evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: terraform-orphan-recovery-${{ github.run_id }}
+          path: recovery-evidence
+          retention-days: 30

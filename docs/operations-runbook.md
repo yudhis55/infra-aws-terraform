@@ -167,6 +167,14 @@ saved plan lama. Jalankan workflow `action=destroy` lagi agar refresh state dan
 plan baru mencerminkan resource tersisa. Approve hanya jika plan recovery tetap
 `0 create`, `0 update`, dan seluruh aksi adalah destroy yang diharapkan.
 
+Jika apply parsial meninggalkan resource AWS yang belum tercatat di state,
+jangan mengulang saved plan yang masih mencoba membuat resource tersebut.
+Jalankan plan inventarisasi untuk memastikan orphan tunggal. Khusus log group
+VPC Flow Logs `/aws/vpc/flowlogs/<project>`, gunakan workflow `Controlled
+Terraform Orphan Recovery`. Approve hanya jika address Terraform belum tercatat
+dan tepat satu log group dengan nama tersebut ditemukan. Setelah artifact import
+berstatus `passed`, buat plan baru; workflow ini tidak menjalankan apply.
+
 Catatan implementasi: variable `force_destroy` atau deletion-protection
 override tidak dapat diandalkan untuk mengubah atribut
 resource yang langsung dihapus oleh destroy plan. Karena itu workflow memakai
