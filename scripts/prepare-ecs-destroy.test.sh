@@ -51,4 +51,6 @@ PATH="$test_root/bin:$PATH" \
 jq -e '.status == "passed" and .service == "eepistore-service" and .serviceDrained and .targetsDrained' \
   "$test_root/evidence/result.json" > /dev/null
 grep -F 'application-autoscaling register-scalable-target' "$test_root/aws-calls.txt" > /dev/null
+grep -F -- '--suspended-state DynamicScalingInSuspended=true,ScheduledScalingSuspended=true,DynamicScalingOutSuspended=true' \
+  "$test_root/aws-calls.txt" > /dev/null
 grep -F 'ecs update-service' "$test_root/aws-calls.txt" > /dev/null
