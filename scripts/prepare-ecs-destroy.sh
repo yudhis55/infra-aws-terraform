@@ -51,7 +51,7 @@ aws application-autoscaling register-scalable-target \
   --service-namespace ecs \
   --resource-id "$resource_id" \
   --scalable-dimension ecs:service:DesiredCount \
-  --suspended-state DynamicScalingInSuspended=true,ScheduledScalingInSuspended=true,DynamicScalingOutSuspended=true \
+  --suspended-state DynamicScalingInSuspended=true,ScheduledScalingSuspended=true,DynamicScalingOutSuspended=true \
   > "$out_dir/autoscaling-suspended.json"
 
 aws ecs update-service --cluster "$cluster" --service "$service" --desired-count 0 \
