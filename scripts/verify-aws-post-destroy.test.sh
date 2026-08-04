@@ -20,6 +20,9 @@ case "$1 $2" in
     # AWS CLI emits an empty string for a JMESPath query with no matching cluster.
     :
     ;;
+  "secretsmanager list-secrets")
+    printf '%s\n' 'None'
+    ;;
   *)
     printf '%s\n' '0'
     ;;

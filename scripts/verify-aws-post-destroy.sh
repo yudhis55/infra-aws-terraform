@@ -6,6 +6,24 @@ environment="${2:-dev}"
 out_dir="${3:-destroy-evidence}"
 mkdir -p "$out_dir"
 
+normalize_count() {
+  local label="$1"
+  local value="${2:-}"
+
+  case "$value" in
+    "" | null | None)
+      printf '0\n'
+      ;;
+    *[!0-9]*)
+      printf 'unexpected non-numeric AWS count for %s: %s\n' "$label" "$value" >&2
+      return 1
+      ;;
+    *)
+      printf '%s\n' "$value"
+      ;;
+  esac
+}
+
 vpcs="$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=$project-$environment-vpc" --query 'length(Vpcs)' --output json)"
 nats="$(aws ec2 describe-nat-gateways --filter "Name=tag:Name,Values=$project-$environment-nat-*" "Name=state,Values=pending,available,deleting,failed" --query 'length(NatGateways)' --output json)"
 instances="$(aws ec2 describe-instances --filters "Name=tag:Name,Values=$project-ecs-instance,$project-$environment-experiment-agent" "Name=instance-state-name,Values=pending,running,stopping,stopped,shutting-down" --query 'length(Reservations[].Instances[])' --output json)"
@@ -28,6 +46,21 @@ else
   cluster_pending="$(jq '.pendingTasksCount // 0' <<< "$cluster_json")"
   cluster_instances="$(jq '.registeredContainerInstancesCount // 0' <<< "$cluster_json")"
 fi
+
+vpcs="$(normalize_count vpcs "$vpcs")"
+nats="$(normalize_count natGateways "$nats")"
+instances="$(normalize_count ec2Instances "$instances")"
+asgs="$(normalize_count autoScalingGroups "$asgs")"
+albs="$(normalize_count loadBalancers "$albs")"
+cluster_running="$(normalize_count ecsRunningTasks "$cluster_running")"
+cluster_pending="$(normalize_count ecsPendingTasks "$cluster_pending")"
+cluster_instances="$(normalize_count ecsContainerInstances "$cluster_instances")"
+rds="$(normalize_count rdsInstances "$rds")"
+proxies="$(normalize_count rdsProxies "$proxies")"
+bootstrap_ecr="$(normalize_count bootstrapEcrRepositories "$bootstrap_ecr")"
+buckets="$(normalize_count workloadBuckets "$buckets")"
+cloudfront="$(normalize_count cloudFrontDistributions "$cloudfront")"
+active_secrets="$(normalize_count activeSecrets "$active_secrets")"
 
 jq -n \
   --argjson vpcs "$vpcs" \
