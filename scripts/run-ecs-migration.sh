@@ -28,6 +28,7 @@ trap write_timing EXIT
 
 cluster="$(terraform -chdir="$tf_dir" output -raw ecs_cluster_name)"
 service="$(terraform -chdir="$tf_dir" output -raw ecs_service_name)"
+log_group="$(terraform -chdir="$tf_dir" output -raw ecs_log_group_name)"
 task_definition="$(aws ecs describe-services \
   --cluster "$cluster" --services "$service" \
   --query 'services[0].taskDefinition' --output text)"
@@ -47,6 +48,23 @@ fi
 
 aws ecs wait tasks-stopped --cluster "$cluster" --tasks "$task_arn"
 aws ecs describe-tasks --cluster "$cluster" --tasks "$task_arn" > "$out_dir/task.json"
+
+task_id="${task_arn##*/}"
+stream_name="ecs/app/${task_id}"
+for attempt in 1 2 3 4 5; do
+  if aws logs get-log-events \
+    --log-group-name "$log_group" \
+    --log-stream-name "$stream_name" \
+    --start-from-head > "$out_dir/logs.json" 2> "$out_dir/logs-error.txt"; then
+    rm -f "$out_dir/logs-error.txt"
+    break
+  fi
+  sleep "$attempt"
+done
+
+if [ ! -s "$out_dir/logs.json" ]; then
+  echo "Unable to collect migration logs from $stream_name" >&2
+fi
 
 exit_code="$(jq -r '.tasks[0].containers[] | select(.name == "app") | .exitCode // empty' \
   "$out_dir/task.json")"
