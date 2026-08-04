@@ -59,17 +59,17 @@ output "rds_kms_key_arn" {
 
 # RDS Proxy Outputs
 output "rds_proxy_endpoint" {
-  value       = var.enable_rds_proxy ? aws_db_proxy.main[0].endpoint : null
+  value       = try(aws_db_proxy.main[0].endpoint, null)
   description = "RDS Proxy endpoint (use this for application connections)"
 }
 
 output "rds_proxy_arn" {
-  value       = var.enable_rds_proxy ? aws_db_proxy.main[0].arn : null
+  value       = try(aws_db_proxy.main[0].arn, null)
   description = "RDS Proxy ARN"
 }
 
 output "rds_proxy_id" {
-  value       = var.enable_rds_proxy ? aws_db_proxy.main[0].id : null
+  value       = try(aws_db_proxy.main[0].id, null)
   description = "RDS Proxy identifier"
 }
 
@@ -80,12 +80,12 @@ output "rds_proxy_enabled" {
 
 # Secrets Manager Outputs
 output "rds_secrets_manager_secret_arn" {
-  value       = aws_db_instance.main.master_user_secret[0].secret_arn
+  value       = try(aws_db_instance.main.master_user_secret[0].secret_arn, null)
   description = "RDS-managed Secrets Manager secret ARN for master credentials"
 }
 
 output "rds_secrets_manager_secret_name" {
-  value       = split(":secret:", aws_db_instance.main.master_user_secret[0].secret_arn)[1]
+  value       = try(split(":secret:", aws_db_instance.main.master_user_secret[0].secret_arn)[1], null)
   description = "RDS-managed Secrets Manager secret name for master credentials"
 }
 
@@ -102,25 +102,25 @@ output "rds_proxy_security_group_id" {
 
 # Connection Information for Applications
 output "connection_info_via_proxy" {
-  value = var.enable_rds_proxy ? {
+  value = try({
     host       = aws_db_proxy.main[0].endpoint
     port       = 5432
     database   = var.db_name
     username   = var.db_username
     secret_arn = aws_db_instance.main.master_user_secret[0].secret_arn
-  } : null
+  }, null)
   description = "Connection information for applications using RDS Proxy"
   sensitive   = true
 }
 
 output "connection_info_direct" {
-  value = {
+  value = try({
     host       = aws_db_instance.main.address
     port       = aws_db_instance.main.port
     database   = var.db_name
     username   = var.db_username
     secret_arn = aws_db_instance.main.master_user_secret[0].secret_arn
-  }
+  }, null)
   description = "Direct connection information to RDS (bypass proxy)"
   sensitive   = true
 }
