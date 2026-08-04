@@ -1,0 +1,98 @@
+name: Recover Existing Flow Log Group State
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type IMPORT-FLOW-LOG-GROUP to continue
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-workload-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-southeast-3
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  TF_VERSION: "1.14.4"
+  TF_WORKING_DIR: env/dev
+  RESOURCE_ADDRESS: module.security.aws_cloudwatch_log_group.flow_logs
+  LOG_GROUP_NAME: /aws/vpc/flowlogs/eepistore
+
+jobs:
+  import:
+    if: inputs.confirmation == 'IMPORT-FLOW-LOG-GROUP'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_VAR_project_name: ${{ vars.TF_VAR_PROJECT_NAME }}
+      TF_VAR_app_image_uri: ${{ vars.TF_VAR_APP_IMAGE_URI }}
+      TF_VAR_domain_name: ${{ vars.TF_VAR_DOMAIN_NAME }}
+      TF_VAR_route53_zone_id: ${{ vars.TF_VAR_ROUTE53_ZONE_ID }}
+      TF_VAR_enable_https: ${{ vars.TF_VAR_ENABLE_HTTPS }}
+      TF_VAR_acm_certificate_arn: ${{ vars.TF_VAR_ACM_CERTIFICATE_ARN }}
+      TF_VAR_app_base_url: ${{ vars.TF_VAR_APP_BASE_URL }}
+      TF_VAR_experiment_mode: off
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ secrets.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Validate exact unmanaged resource
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ../../flow-log-recovery-evidence
+          terraform init
+          if terraform state show "$RESOURCE_ADDRESS" > ../../flow-log-recovery-evidence/state-before.txt 2>&1; then
+            echo "resource is already managed; import refused" >&2
+            exit 1
+          fi
+          aws logs describe-log-groups \
+            --log-group-name-prefix "$LOG_GROUP_NAME" \
+            > ../../flow-log-recovery-evidence/aws-before.json
+          jq -e --arg name "$LOG_GROUP_NAME" \
+            '[.logGroups[] | select(.logGroupName == $name)] | length == 1' \
+            ../../flow-log-recovery-evidence/aws-before.json > /dev/null
+      - name: Import and verify state ownership
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rollback() {
+            terraform state rm "$RESOURCE_ADDRESS" || true
+          }
+          trap rollback ERR
+          terraform import "$RESOURCE_ADDRESS" "$LOG_GROUP_NAME"
+          terraform state show "$RESOURCE_ADDRESS" > ../../flow-log-recovery-evidence/state-after.txt
+          grep -F '"/aws/vpc/flowlogs/eepistore"' ../../flow-log-recovery-evidence/state-after.txt > /dev/null
+          terraform plan -refresh-only -out=refresh.tfplan
+          terraform show -no-color refresh.tfplan > ../../flow-log-recovery-evidence/refresh-plan.txt
+          trap - ERR
+          jq -n --arg runId "$GITHUB_RUN_ID" --arg address "$RESOURCE_ADDRESS" --arg name "$LOG_GROUP_NAME" \
+            '{status:"passed",githubRunId:$runId,resourceAddress:$address,logGroupName:$name,preservedExistingLogs:true}' \
+            > ../../flow-log-recovery-evidence/result.json
+      - name: Upload recovery evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: flow-log-state-recovery-${{ github.run_id }}
+          path: flow-log-recovery-evidence
+          if-no-files-found: error
+          retention-days: 90
