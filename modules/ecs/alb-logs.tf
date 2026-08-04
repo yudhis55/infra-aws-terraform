@@ -1,4 +1,4 @@
-data "aws_elb_service_account" "main" {}
+data "aws_partition" "current" {}
 
 resource "aws_s3_bucket" "alb_logs" {
   bucket_prefix = "${var.project_name}-${var.environment}-alb-logs-"
@@ -48,10 +48,15 @@ resource "aws_s3_bucket_policy" "alb_logs" {
         Sid    = "AllowALBAccessLogs"
         Effect = "Allow"
         Principal = {
-          AWS = data.aws_elb_service_account.main.arn
+          Service = "logdelivery.elasticloadbalancing.amazonaws.com"
         }
         Action   = "s3:PutObject"
-        Resource = "${aws_s3_bucket.alb_logs.arn}/alb/AWSLogs/*"
+        Resource = "${aws_s3_bucket.alb_logs.arn}/alb/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+        Condition = {
+          ArnLike = {
+            "aws:SourceArn" = "arn:${data.aws_partition.current.partition}:elasticloadbalancing:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:loadbalancer/*"
+          }
+        }
       }
     ]
   })
