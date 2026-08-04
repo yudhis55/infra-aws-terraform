@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 POLICY_FILE="$ROOT_DIR/modules/ecs/alb-logs.tf"
 
 grep -Fq 'Service = "logdelivery.elasticloadbalancing.amazonaws.com"' "$POLICY_FILE"
-grep -Fq '/alb/AWSLogs/${data.aws_caller_identity.current.account_id}/*' "$POLICY_FILE"
+grep -Fq "/alb/AWSLogs/\${data.aws_caller_identity.current.account_id}/*" "$POLICY_FILE"
 grep -Fq '"aws:SourceArn"' "$POLICY_FILE"
 grep -Fq ':loadbalancer/*' "$POLICY_FILE"
 
