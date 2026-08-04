@@ -17,7 +17,8 @@ case "$1 $2" in
     printf '%s\n' '1'
     ;;
   "ecs describe-clusters")
-    printf '%s\n' 'null'
+    # AWS CLI emits an empty string for a JMESPath query with no matching cluster.
+    :
     ;;
   *)
     printf '%s\n' '0'
