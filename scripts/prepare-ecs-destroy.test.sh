@@ -8,10 +8,12 @@ mkdir -p "$test_root/bin" "$test_root/evidence"
 cat > "$test_root/bin/terraform" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+if [ "${MOCK_MISSING_OUTPUTS:-false}" = true ]; then exit 1; fi
 case "${!#}" in
   ecs_cluster_name) echo eepistore-cluster ;;
   ecs_service_name) echo eepistore-service ;;
   target_group_arn) echo arn:aws:elasticloadbalancing:test:targetgroup/eepistore/123 ;;
+  alb_arn) echo arn:aws:elasticloadbalancing:test:loadbalancer/app/eepistore/456 ;;
   *) exit 2 ;;
 esac
 EOF
@@ -21,6 +23,7 @@ cat > "$test_root/bin/aws" <<'EOF'
 set -euo pipefail
 printf '%s\n' "$*" >> "$MOCK_AWS_CALLS"
 case "$1 $2" in
+  "elbv2 modify-load-balancer-attributes") printf '%s\n' '{"Attributes":[{"Key":"access_logs.s3.enabled","Value":"false"}]}' ;;
   "ecs describe-services")
     calls=0
     if [ -f "$MOCK_SERVICE_CALLS" ]; then calls="$(cat "$MOCK_SERVICE_CALLS")"; fi
@@ -48,9 +51,17 @@ export ECS_DRAIN_MAX_ATTEMPTS=3
 PATH="$test_root/bin:$PATH" \
   bash scripts/prepare-ecs-destroy.sh env/dev "$test_root/evidence"
 
-jq -e '.status == "passed" and .service == "eepistore-service" and .serviceDrained and .targetsDrained' \
+jq -e '.status == "passed" and .service == "eepistore-service" and .serviceDrained and .targetsDrained and .accessLoggingDisabled' \
   "$test_root/evidence/result.json" > /dev/null
+grep -F 'elbv2 modify-load-balancer-attributes' "$test_root/aws-calls.txt" > /dev/null
+grep -F -- '--attributes Key=access_logs.s3.enabled,Value=false' "$test_root/aws-calls.txt" > /dev/null
 grep -F 'application-autoscaling register-scalable-target' "$test_root/aws-calls.txt" > /dev/null
 grep -F -- '--suspended-state DynamicScalingInSuspended=true,ScheduledScalingSuspended=true,DynamicScalingOutSuspended=true' \
   "$test_root/aws-calls.txt" > /dev/null
 grep -F 'ecs update-service' "$test_root/aws-calls.txt" > /dev/null
+
+mkdir -p "$test_root/recovery-evidence"
+MOCK_MISSING_OUTPUTS=true PATH="$test_root/bin:$PATH" \
+  bash scripts/prepare-ecs-destroy.sh env/dev "$test_root/recovery-evidence"
+jq -e '.status == "not-found" and (.cluster | length == 0) and (.albArn | length == 0)' \
+  "$test_root/recovery-evidence/result.json" > /dev/null
