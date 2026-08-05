@@ -7,10 +7,14 @@ poll_interval="${ECS_DRAIN_POLL_INTERVAL_SECONDS:-15}"
 max_attempts="${ECS_DRAIN_MAX_ATTEMPTS:-60}"
 mkdir -p "$out_dir"
 
-cluster="$(terraform -chdir="$tf_dir" output -raw ecs_cluster_name 2>/dev/null || true)"
-service="$(terraform -chdir="$tf_dir" output -raw ecs_service_name 2>/dev/null || true)"
-target_group="$(terraform -chdir="$tf_dir" output -raw target_group_arn 2>/dev/null || true)"
-alb_arn="$(terraform -chdir="$tf_dir" output -raw alb_arn 2>/dev/null || true)"
+if ! terraform_outputs="$(terraform -chdir="$tf_dir" output -json 2>/dev/null)" ||
+  ! jq -e 'type == "object"' <<<"$terraform_outputs" >/dev/null; then
+  terraform_outputs='{}'
+fi
+cluster="$(jq -r '.ecs_cluster_name.value // empty' <<<"$terraform_outputs")"
+service="$(jq -r '.ecs_service_name.value // empty' <<<"$terraform_outputs")"
+target_group="$(jq -r '.target_group_arn.value // empty' <<<"$terraform_outputs")"
+alb_arn="$(jq -r '.alb_arn.value // empty' <<<"$terraform_outputs")"
 resource_id="service/$cluster/$service"
 started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 started_epoch="$(date +%s)"
@@ -18,6 +22,7 @@ status="failed"
 service_drained=false
 targets_drained=false
 access_logging_disabled=false
+alb_present=false
 
 write_result() {
   local ended_at
@@ -36,17 +41,25 @@ write_result() {
     --argjson serviceDrained "$service_drained" \
     --argjson targetsDrained "$targets_drained" \
     --argjson accessLoggingDisabled "$access_logging_disabled" \
-    '{status:$status,cluster:$cluster,service:$service,targetGroup:$targetGroup,albArn:$albArn,startedAt:$startedAt,endedAt:$endedAt,durationSeconds:$durationSeconds,serviceDrained:$serviceDrained,targetsDrained:$targetsDrained,accessLoggingDisabled:$accessLoggingDisabled}' \
+    --argjson albPresent "$alb_present" \
+    '{status:$status,cluster:$cluster,service:$service,targetGroup:$targetGroup,albArn:$albArn,startedAt:$startedAt,endedAt:$endedAt,durationSeconds:$durationSeconds,serviceDrained:$serviceDrained,targetsDrained:$targetsDrained,accessLoggingDisabled:$accessLoggingDisabled,albPresent:$albPresent}' \
     > "$out_dir/result.json"
 }
 trap write_result EXIT
 
 if [ -n "$alb_arn" ]; then
-  aws elbv2 modify-load-balancer-attributes \
-    --load-balancer-arn "$alb_arn" \
-    --attributes Key=access_logs.s3.enabled,Value=false \
-    > "$out_dir/alb-access-logging-disabled.json"
-  access_logging_disabled=true
+  if aws elbv2 describe-load-balancers --load-balancer-arns "$alb_arn" \
+    > "$out_dir/alb-before.json" 2>"$out_dir/alb-before.err"; then
+    alb_present=true
+    aws elbv2 modify-load-balancer-attributes \
+      --load-balancer-arn "$alb_arn" \
+      --attributes Key=access_logs.s3.enabled,Value=false \
+      > "$out_dir/alb-access-logging-disabled.json"
+    access_logging_disabled=true
+  elif ! grep -Fq 'LoadBalancerNotFound' "$out_dir/alb-before.err"; then
+    cat "$out_dir/alb-before.err" >&2
+    exit 1
+  fi
 fi
 
 if [ -z "$cluster" ] || [ -z "$service" ] || [ -z "$target_group" ]; then
