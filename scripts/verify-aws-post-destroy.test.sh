@@ -23,6 +23,9 @@ case "$1 $2" in
   "secretsmanager list-secrets")
     printf '%s\n' 'None'
     ;;
+  "logs describe-log-groups")
+    printf '%s\n' '0'
+    ;;
   *)
     printf '%s\n' '0'
     ;;
@@ -36,7 +39,15 @@ PATH="$test_root/bin:$PATH" bash scripts/verify-aws-post-destroy.sh \
 jq -e '
   .status == "passed" and
   .remaining.cloudFrontDistributions == 0 and
+  .remaining.vpcFlowLogGroups == 0 and
   .retainedPrerequisites.ecrRepositories == 1
 ' "$test_root/evidence/aws-resource-audit.json" > /dev/null
 grep -Fx 'PASS aws-workload-resources-absent' \
   "$test_root/evidence/verification-status.txt" > /dev/null
+
+if grep -Fq '"logs:CreateLogGroup"' modules/security/logging.tf; then
+  echo "VPC Flow Logs role must not recreate the Terraform-managed log group" >&2
+  exit 1
+fi
+grep -Fq '"logs:CreateLogStream"' modules/security/logging.tf
+grep -Fq '"logs:PutLogEvents"' modules/security/logging.tf

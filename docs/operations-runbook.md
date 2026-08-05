@@ -61,6 +61,10 @@ State` dengan konfirmasi `IMPORT-FLOW-LOG-GROUP`. Workflow hanya melanjutkan
 jika alamat Terraform belum dikelola dan AWS mengembalikan tepat satu log group
 dengan nama exact. Import dibatalkan dari state bila post-check gagal. Setelah
 import berhasil, jalankan plan baru; jangan menggunakan saved plan yang gagal.
+Role VPC Flow Logs tidak memiliki izin `logs:CreateLogGroup` karena log group
+dibuat oleh Terraform. Audit pasca-destroy wajib memastikan
+`remaining.vpcFlowLogGroups` bernilai nol agar log group yang muncul kembali di
+luar state tidak dianggap sebagai clean baseline.
 
 ## Post-Apply Verification
 
@@ -159,6 +163,8 @@ atau hapus cache `.terraform/` yang ignored lalu jalankan `terraform init
    - cek secret sisa; scheduled deletion adalah kondisi yang diharapkan,
    - cek resource mahal: NAT, RDS, ALB, ECS/EC2, S3 workload, dan CloudFront;
      tepat satu ECR bootstrap boleh tetap ada selama campaign.
+   - cek `remaining.vpcFlowLogGroups == 0`; log group Flow Logs yang masih ada
+     membatalkan clean-cycle evidence walaupun Terraform state sudah kosong.
 5. Jangan hapus backend remote state kecuali target berubah menjadi nol biaya
    absolut dan siap bootstrap ulang nanti.
 
