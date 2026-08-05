@@ -12,6 +12,7 @@ resource "aws_db_proxy" "main" {
   auth {
     auth_scheme               = "SECRETS"
     client_password_auth_type = "POSTGRES_SCRAM_SHA_256"
+    iam_auth                  = "DISABLED"
     secret_arn                = aws_db_instance.main.master_user_secret[0].secret_arn
   }
 

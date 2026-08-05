@@ -3,6 +3,7 @@ set -euo pipefail
 
 TF_DIR="${1:-env/dev}"
 OUT_DIR="$(pwd)/${2:-verification-evidence}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 mkdir -p "$OUT_DIR"
 mkdir -p "$OUT_DIR/timing"
@@ -113,10 +114,21 @@ terraform -chdir="$TF_DIR" plan -detailed-exitcode -out="$OUT_DIR/drift.tfplan" 
 drift_code=$?
 set -e
 
-case "$drift_code" in
+if [[ "$drift_code" != "0" && "$drift_code" != "2" ]]; then
+  log_status "FAIL terraform-drift: terraform plan failed with exit code $drift_code"
+  exit "$drift_code"
+fi
+
+terraform -chdir="$TF_DIR" show -json "$OUT_DIR/drift.tfplan" > "$OUT_DIR/drift-plan.json"
+set +e
+"$SCRIPT_DIR/check-terraform-plan-drift.sh" "$OUT_DIR/drift-plan.json"
+drift_check_code=$?
+set -e
+
+case "$drift_check_code" in
   0) log_status "PASS terraform-drift: no drift detected" ;;
-  2) log_status "FAIL terraform-drift: drift detected; see drift-plan.txt" ;;
-  *) log_status "FAIL terraform-drift: terraform plan failed with exit code $drift_code"; exit "$drift_code" ;;
+  2) log_status "FAIL terraform-drift: drift detected; see drift-plan.txt and drift-plan.json" ;;
+  *) log_status "FAIL terraform-drift: plan JSON validation failed with exit code $drift_check_code"; exit "$drift_check_code" ;;
 esac
 
 vpc_id="$(read_output vpc_id)"

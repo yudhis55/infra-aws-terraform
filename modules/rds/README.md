@@ -19,4 +19,8 @@ RDS Proxy hanya boleh menerima koneksi dari security group ECS. Aplikasi harus
 menggunakan endpoint proxy, bukan endpoint RDS langsung, agar connection pooling
 lebih stabil untuk fullstack Next.js.
 
+Blok autentikasi proxy menetapkan `iam_auth = "DISABLED"` secara eksplisit karena
+aplikasi memakai kredensial Secrets Manager. Nilai eksplisit ini juga mencegah
+normalisasi default provider menghasilkan plan update berulang setelah apply.
+
 Production default memakai deletion protection dan final snapshot.
