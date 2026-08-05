@@ -67,6 +67,8 @@ runbook, tetapi tidak menggantikan paket eksperimen final:
 | `30872524245` | Rerun idempoten setelah target matang menyelesaikan tiga migration dan seluruh post-apply verifier PASS | Mendukung diagnosis readiness race; run tidak dipakai sebagai Cycle R | Valid recovery |
 | `30872856860` | Destroy parsial menunggu ECS service `DRAINING` sampai timeout 45 menit | Pre-destroy ECS scale-to-zero, autoscaling suspension, dan target drain ditambahkan | Valid recovery |
 | `30875541625` | Destroy lanjutan menghapus 67 resource tersisa | State kosong, seluruh workload count nol, ECR retained satu | Valid recovery/clean baseline |
+| `30965178973` | Fresh apply gagal karena log group VPC Flow Logs muncul kembali di luar state | Izin `CreateLogGroup` dicabut dari role Flow Logs dan audit destroy kini mewajibkan `vpcFlowLogGroups=0` | Valid recovery; bukan Cycle R |
+| `30967301286` | Full destroy melewati timeout ECS service 45 menit walaupun pre-drain lulus | Timeout Terraform dinaikkan menjadi 60 menit; continuation run `30970089169` menghapus 67 resource tersisa dan membuktikan state kosong, workload nol, Flow Logs group nol, serta ECR retained satu | Valid recovery/clean baseline |
 
 ## Interpretation Boundaries
 

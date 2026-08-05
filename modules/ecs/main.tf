@@ -242,7 +242,7 @@ resource "aws_ecs_service" "app" {
   # ECS can remain DRAINING while ALB targets and capacity-provider tasks are
   # deregistered during a controlled teardown.
   timeouts {
-    delete = "45m"
+    delete = "60m"
   }
 
   tags = {

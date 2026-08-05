@@ -189,7 +189,10 @@ menjalankan saved plan yang telah direview.
 
 Jangan mengandalkan timeout delete ECS sebagai mekanisme drain. Workflow harus
 menyelesaikan scale-to-zero dan deregistrasi target sebelum Terraform destroy;
-timeout hanya menjadi batas recovery terakhir.
+timeout 60 menit hanya menjadi batas recovery terakhir. Nilai ini lebih besar
+dari observasi service `DRAINING` yang melewati 45 menit pada run recovery
+`30967301286`; jika batas 60 menit tetap terlewati, buat plan lanjutan setelah
+refresh dan jangan mengulang saved plan lama.
 
 ## Cost Audit Notes
 
