@@ -23,8 +23,12 @@ berhasil dibuat.
 
 2. Cek state dan drift.
    - `terraform plan -detailed-exitcode`
-   - Exit code `0` berarti tidak ada drift.
-   - Exit code `2` berarti ada perubahan/drift yang harus dianalisis.
+   - Saved plan dikonversi ke JSON dan setiap `resource_changes` dengan action
+     selain `no-op` diperlakukan sebagai drift.
+   - Exit code Terraform tetap diperiksa, tetapi tidak menjadi satu-satunya dasar
+     status karena wrapper CLI dapat mengaburkan `-detailed-exitcode`.
+   - Artifact `drift-plan.txt` dan `drift-plan.json` harus sama-sama direview jika
+     gate mendeteksi perubahan.
 
 3. Cek network boundary.
    - VPC memiliki public, private app, dan private data subnet di dua AZ.
