@@ -69,6 +69,7 @@ runbook, tetapi tidak menggantikan paket eksperimen final:
 | `30875541625` | Destroy lanjutan menghapus 67 resource tersisa | State kosong, seluruh workload count nol, ECR retained satu | Valid recovery/clean baseline |
 | `30965178973` | Fresh apply gagal karena log group VPC Flow Logs muncul kembali di luar state | Izin `CreateLogGroup` dicabut dari role Flow Logs dan audit destroy kini mewajibkan `vpcFlowLogGroups=0` | Valid recovery; bukan Cycle R |
 | `30967301286` | Full destroy melewati timeout ECS service 45 menit walaupun pre-drain lulus | Timeout Terraform dinaikkan menjadi 60 menit; continuation run `30970089169` menghapus 67 resource tersisa dan membuktikan state kosong, workload nol, Flow Logs group nol, serta ECR retained satu | Valid recovery/clean baseline |
+| `30973278848` | Cycle R destroy mencoba final snapshot ketika RDS tidak berstatus `available` | Workflow eksperimen menetapkan `skip_final_snapshot=true` sejak apply; audit destroy menghitung snapshot final dan cleanup recovery dibatasi prefix exact | Invalid Cycle R; valid recovery finding |
 
 ## Interpretation Boundaries
 
