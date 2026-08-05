@@ -8,14 +8,10 @@ mkdir -p "$test_root/bin" "$test_root/evidence"
 cat > "$test_root/bin/terraform" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-if [ "${MOCK_MISSING_OUTPUTS:-false}" = true ]; then exit 1; fi
-case "${!#}" in
-  ecs_cluster_name) echo eepistore-cluster ;;
-  ecs_service_name) echo eepistore-service ;;
-  target_group_arn) echo arn:aws:elasticloadbalancing:test:targetgroup/eepistore/123 ;;
-  alb_arn) echo arn:aws:elasticloadbalancing:test:loadbalancer/app/eepistore/456 ;;
-  *) exit 2 ;;
-esac
+if [ "${MOCK_MISSING_OUTPUTS:-false}" = true ]; then printf '%s\n' '{}'; exit 0; fi
+cat <<'JSON'
+{"ecs_cluster_name":{"value":"eepistore-cluster"},"ecs_service_name":{"value":"eepistore-service"},"target_group_arn":{"value":"arn:aws:elasticloadbalancing:test:targetgroup/eepistore/123"},"alb_arn":{"value":"arn:aws:elasticloadbalancing:test:loadbalancer/app/eepistore/456"}}
+JSON
 EOF
 
 cat > "$test_root/bin/aws" <<'EOF'
@@ -23,6 +19,7 @@ cat > "$test_root/bin/aws" <<'EOF'
 set -euo pipefail
 printf '%s\n' "$*" >> "$MOCK_AWS_CALLS"
 case "$1 $2" in
+  "elbv2 describe-load-balancers") printf '%s\n' '{"LoadBalancers":[{"LoadBalancerArn":"arn:aws:elasticloadbalancing:test:loadbalancer/app/eepistore/456"}]}' ;;
   "elbv2 modify-load-balancer-attributes") printf '%s\n' '{"Attributes":[{"Key":"access_logs.s3.enabled","Value":"false"}]}' ;;
   "ecs describe-services")
     calls=0
@@ -51,7 +48,7 @@ export ECS_DRAIN_MAX_ATTEMPTS=3
 PATH="$test_root/bin:$PATH" \
   bash scripts/prepare-ecs-destroy.sh env/dev "$test_root/evidence"
 
-jq -e '.status == "passed" and .service == "eepistore-service" and .serviceDrained and .targetsDrained and .accessLoggingDisabled' \
+jq -e '.status == "passed" and .service == "eepistore-service" and .serviceDrained and .targetsDrained and .accessLoggingDisabled and .albPresent' \
   "$test_root/evidence/result.json" > /dev/null
 grep -F 'elbv2 modify-load-balancer-attributes' "$test_root/aws-calls.txt" > /dev/null
 grep -F -- '--attributes Key=access_logs.s3.enabled,Value=false' "$test_root/aws-calls.txt" > /dev/null
@@ -63,5 +60,5 @@ grep -F 'ecs update-service' "$test_root/aws-calls.txt" > /dev/null
 mkdir -p "$test_root/recovery-evidence"
 MOCK_MISSING_OUTPUTS=true PATH="$test_root/bin:$PATH" \
   bash scripts/prepare-ecs-destroy.sh env/dev "$test_root/recovery-evidence"
-jq -e '.status == "not-found" and (.cluster | length == 0) and (.albArn | length == 0)' \
+jq -e '.status == "not-found" and (.cluster | length == 0) and (.albArn | length == 0) and (.albPresent | not)' \
   "$test_root/recovery-evidence/result.json" > /dev/null
