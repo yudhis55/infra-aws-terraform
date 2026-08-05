@@ -159,11 +159,17 @@ atau hapus cache `.terraform/` yang ignored lalu jalankan `terraform init
    - cek `preparation/result.json` berstatus `passed` atau `not-found` untuk
      recovery stack yang service-nya sudah tidak ada,
    - cek artifact `post-destroy-verification` berisi `PASS terraform-state-empty`,
-   - hapus final RDS snapshot jika muncul dan tidak diperlukan,
+   - workflow eksperimen menetapkan `skip_final_snapshot=true` sejak apply
+     karena stack bersifat sementara; module RDS di luar workflow tetap memakai
+     default production `false`,
+   - untuk snapshot recovery lama, gunakan workflow `Controlled RDS Final
+     Snapshot Cleanup`; workflow hanya berjalan jika state dan DB instance
+     kosong serta identifier memakai prefix exact `eepistore-dev-final-`,
    - cek secret sisa; scheduled deletion adalah kondisi yang diharapkan,
    - cek resource mahal: NAT, RDS, ALB, ECS/EC2, S3 workload, dan CloudFront;
      tepat satu ECR bootstrap boleh tetap ada selama campaign.
-   - cek `remaining.vpcFlowLogGroups == 0`; log group Flow Logs yang masih ada
+   - cek `remaining.rdsFinalSnapshots == 0` dan
+     `remaining.vpcFlowLogGroups == 0`; snapshot atau log group yang masih ada
      membatalkan clean-cycle evidence walaupun Terraform state sudah kosong.
 5. Jangan hapus backend remote state kecuali target berubah menjadi nol biaya
    absolut dan siap bootstrap ulang nanti.

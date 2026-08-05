@@ -57,6 +57,9 @@ env:
   TF_WORKING_DIR: env/dev
   TF_VERSION: "1.14.4"
   TFLINT_VERSION: "v0.59.1"
+  # The workflow provisions short-lived research stacks. The RDS module keeps
+  # its production-safe default (false) outside this controlled experiment.
+  TF_VAR_skip_final_snapshot: "true"
 
 jobs:
   validate-and-scan:
@@ -250,7 +253,6 @@ jobs:
         run: |
           {
             echo "TF_VAR_enable_deletion_protection=false"
-            echo "TF_VAR_skip_final_snapshot=true"
             echo "TF_VAR_force_destroy=true"
           } >> "$GITHUB_ENV"
       - name: Create saved plan
@@ -373,7 +375,6 @@ jobs:
         run: |
           {
             echo "TF_VAR_enable_deletion_protection=false"
-            echo "TF_VAR_skip_final_snapshot=true"
             echo "TF_VAR_force_destroy=true"
           } >> "$GITHUB_ENV"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1

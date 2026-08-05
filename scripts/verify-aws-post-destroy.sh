@@ -30,6 +30,7 @@ instances="$(aws ec2 describe-instances --filters "Name=tag:Name,Values=$project
 asgs="$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$project-asg" --query 'length(AutoScalingGroups)' --output json)"
 albs="$(aws elbv2 describe-load-balancers --names "$project-alb" --query 'length(LoadBalancers)' --output json 2>/dev/null || echo 0)"
 rds="$(aws rds describe-db-instances --db-instance-identifier "$project-$environment-db" --query 'length(DBInstances)' --output json 2>/dev/null || echo 0)"
+rds_final_snapshots="$(aws rds describe-db-snapshots --snapshot-type manual --query "length(DBSnapshots[?starts_with(DBSnapshotIdentifier, '$project-$environment-final-')])" --output json)"
 proxies="$(aws rds describe-db-proxies --db-proxy-name "$project-$environment-proxy" --query 'length(DBProxies)' --output json 2>/dev/null || echo 0)"
 bootstrap_ecr="$(aws ecr describe-repositories --repository-names "$project-repo" --query 'length(repositories)' --output json 2>/dev/null || echo 0)"
 buckets="$(aws s3api list-buckets --query "length(Buckets[?starts_with(Name, '$project-$environment-public-media-') || starts_with(Name, '$project-$environment-private-documents-') || starts_with(Name, '$project-$environment-alb-logs-')])" --output json)"
@@ -57,6 +58,7 @@ cluster_running="$(normalize_count ecsRunningTasks "$cluster_running")"
 cluster_pending="$(normalize_count ecsPendingTasks "$cluster_pending")"
 cluster_instances="$(normalize_count ecsContainerInstances "$cluster_instances")"
 rds="$(normalize_count rdsInstances "$rds")"
+rds_final_snapshots="$(normalize_count rdsFinalSnapshots "$rds_final_snapshots")"
 proxies="$(normalize_count rdsProxies "$proxies")"
 bootstrap_ecr="$(normalize_count bootstrapEcrRepositories "$bootstrap_ecr")"
 buckets="$(normalize_count workloadBuckets "$buckets")"
@@ -74,13 +76,14 @@ jq -n \
   --argjson ecsPendingTasks "$cluster_pending" \
   --argjson ecsContainerInstances "$cluster_instances" \
   --argjson rdsInstances "$rds" \
+  --argjson rdsFinalSnapshots "$rds_final_snapshots" \
   --argjson rdsProxies "$proxies" \
   --argjson bootstrapEcrRepositories "$bootstrap_ecr" \
   --argjson workloadBuckets "$buckets" \
   --argjson cloudFrontDistributions "$cloudfront" \
   --argjson activeSecrets "$active_secrets" \
   --argjson vpcFlowLogGroups "$flow_log_groups" \
-  '{status:"pending",remaining:{vpcs:$vpcs,natGateways:$natGateways,ec2Instances:$ec2Instances,autoScalingGroups:$autoScalingGroups,loadBalancers:$loadBalancers,ecsRunningTasks:$ecsRunningTasks,ecsPendingTasks:$ecsPendingTasks,ecsContainerInstances:$ecsContainerInstances,rdsInstances:$rdsInstances,rdsProxies:$rdsProxies,workloadBuckets:$workloadBuckets,cloudFrontDistributions:$cloudFrontDistributions,activeSecrets:$activeSecrets,vpcFlowLogGroups:$vpcFlowLogGroups},retainedPrerequisites:{ecrRepositories:$bootstrapEcrRepositories}} | .status=(if (([.remaining[]] | all(. == 0)) and .retainedPrerequisites.ecrRepositories == 1) then "passed" else "failed" end)' \
+  '{status:"pending",remaining:{vpcs:$vpcs,natGateways:$natGateways,ec2Instances:$ec2Instances,autoScalingGroups:$autoScalingGroups,loadBalancers:$loadBalancers,ecsRunningTasks:$ecsRunningTasks,ecsPendingTasks:$ecsPendingTasks,ecsContainerInstances:$ecsContainerInstances,rdsInstances:$rdsInstances,rdsFinalSnapshots:$rdsFinalSnapshots,rdsProxies:$rdsProxies,workloadBuckets:$workloadBuckets,cloudFrontDistributions:$cloudFrontDistributions,activeSecrets:$activeSecrets,vpcFlowLogGroups:$vpcFlowLogGroups},retainedPrerequisites:{ecrRepositories:$bootstrapEcrRepositories}} | .status=(if (([.remaining[]] | all(. == 0)) and .retainedPrerequisites.ecrRepositories == 1) then "passed" else "failed" end)' \
   > "$out_dir/aws-resource-audit.json"
 
 jq -e '.status == "passed"' "$out_dir/aws-resource-audit.json" > /dev/null

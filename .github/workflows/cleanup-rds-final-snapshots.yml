@@ -1,0 +1,105 @@
+name: Controlled RDS Final Snapshot Cleanup
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type DELETE-EEPISTORE-FINAL-SNAPSHOTS
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-workload-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  TF_WORKING_DIR: env/dev
+  TF_VERSION: "1.14.4"
+  PROJECT_NAME: eepistore
+  ENVIRONMENT_NAME: dev
+
+jobs:
+  cleanup:
+    name: Verify and Delete Final Snapshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ secrets.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Terraform init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform init
+      - name: Verify cleanup preconditions
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$CONFIRMATION" = 'DELETE-EEPISTORE-FINAL-SNAPSHOTS'
+          mkdir -p snapshot-cleanup-evidence
+
+          state_count="$(terraform -chdir="$TF_WORKING_DIR" state list | sed '/^$/d' | wc -l | tr -d ' ')"
+          test "$state_count" = "0"
+
+          db_identifier="$PROJECT_NAME-$ENVIRONMENT_NAME-db"
+          db_count="$(aws rds describe-db-instances \
+            --query "length(DBInstances[?DBInstanceIdentifier=='$db_identifier'])" \
+            --output text)"
+          test "$db_count" = "0"
+
+          prefix="$PROJECT_NAME-$ENVIRONMENT_NAME-final-"
+          aws rds describe-db-snapshots \
+            --snapshot-type manual \
+            --query "DBSnapshots[?starts_with(DBSnapshotIdentifier, '$prefix')].[DBSnapshotIdentifier,Status,DBInstanceIdentifier]" \
+            --output json > snapshot-cleanup-evidence/before.json
+          test "$(jq 'length' snapshot-cleanup-evidence/before.json)" -ge 1
+          jq -e 'all(.[]; .[1] == "available" and .[2] == "eepistore-dev-db")' \
+            snapshot-cleanup-evidence/before.json >/dev/null
+      - name: Delete exact project final snapshots
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -r '.[][0]' snapshot-cleanup-evidence/before.json | while read -r snapshot; do
+            aws rds delete-db-snapshot --db-snapshot-identifier "$snapshot" >/dev/null
+            aws rds wait db-snapshot-deleted --db-snapshot-identifier "$snapshot"
+          done
+      - name: Verify cleanup result
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="$PROJECT_NAME-$ENVIRONMENT_NAME-final-"
+          aws rds describe-db-snapshots \
+            --snapshot-type manual \
+            --query "DBSnapshots[?starts_with(DBSnapshotIdentifier, '$prefix')]" \
+            --output json > snapshot-cleanup-evidence/after.json
+          test "$(jq 'length' snapshot-cleanup-evidence/after.json)" = "0"
+          jq -n \
+            --arg status passed \
+            --arg runId "$GITHUB_RUN_ID" \
+            --slurpfile before snapshot-cleanup-evidence/before.json \
+            '{status:$status,githubRunId:$runId,deletedSnapshots:($before[0] | map(.[0]))}' \
+            > snapshot-cleanup-evidence/result.json
+      - name: Upload cleanup evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rds-final-snapshot-cleanup-${{ github.run_id }}
+          path: snapshot-cleanup-evidence
+          retention-days: 30
