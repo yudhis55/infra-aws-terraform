@@ -8,7 +8,7 @@ sensitif tetap disimpan di GitHub Actions atau media lokal yang di-ignore.
 
 - Research campaign v2 belum menjadi evidence final sampai dua clean cycle dan
   paket 18 run lulus agregasi canonical.
-- Terraform state workload kosong dibuktikan ulang oleh run `30977187906`, artifact
+- Terraform state workload kosong dibuktikan ulang oleh run `31017727741`, artifact
   `post-destroy-verification`, dengan status `PASS terraform-state-empty`.
 - Audit AWS setelah destroy tidak menemukan VPC, NAT Gateway, EC2/ECS/ASG,
   ALB, RDS/RDS Proxy, CloudFront, secret aktif, atau bucket workload Eepistore.
@@ -72,6 +72,8 @@ runbook, tetapi tidak menggantikan paket eksperimen final:
 | `30973278848` | Cycle R destroy mencoba final snapshot ketika RDS tidak berstatus `available` | Workflow eksperimen menetapkan `skip_final_snapshot=true` sejak apply; audit destroy menghitung snapshot final dan cleanup recovery dibatasi prefix exact | Invalid Cycle R; valid recovery finding |
 | `30975324252` | Apply dan verifikasi operasional lulus, tetapi artifact drift plan memuat satu update normalisasi `iam_auth` RDS Proxy sementara verifier salah mencatat no drift | `iam_auth="DISABLED"` dibuat eksplisit dan drift gate diubah agar memeriksa setiap action non-`no-op` dari saved plan JSON | Invalid Cycle R; valid recovery finding |
 | `30977187906` | Stack dari Cycle R yang dibatalkan dihancurkan dengan plan 140 destroy | State kosong, seluruh workload count nol, snapshot final nol, Flow Logs group nol, dan satu ECR prerequisite tetap ada | Valid recovery/clean baseline |
+| `31017342567` | Exact-tag drift recovery ditolak karena module-level dependency memperluas perubahan menjadi replacement experiment agent dan update KMS policy | Emergency rollback run `31017571822` menghapus tag exact; dependency RDS/experiment dikembalikan ke resource-scoped input references | Invalid campaign; valid stop-condition evidence |
+| `31017727741` | Stack campaign yang dibatalkan dihancurkan dengan plan 147 destroy | State dan resource workload diverifikasi kosong sebelum baseline baru | Valid recovery/clean baseline |
 
 ## Interpretation Boundaries
 

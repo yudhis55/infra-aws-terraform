@@ -132,8 +132,6 @@ module "rds" {
   enable_rds_proxy           = true
   proxy_max_connections      = var.proxy_max_connections
   proxy_max_idle_connections = var.proxy_max_idle_connections
-
-  depends_on = [module.networking]
 }
 
 module "ecs" {
@@ -225,8 +223,6 @@ module "experiment" {
   instance_type       = var.experiment_agent_instance_type
   drift_target_arn    = module.networking.alb_security_group_arn
   experiment_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-infra-experiment-role"
-
-  depends_on = [module.networking]
 }
 
 # ==================== Phase 5: Monitoring & CloudWatch ====================

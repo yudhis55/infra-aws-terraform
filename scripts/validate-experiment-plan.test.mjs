@@ -67,3 +67,16 @@ test("rejects a drift recovery that changes a functional attribute", () => {
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /unexpected attributes/);
 });
+
+test("keeps RDS and experiment dependencies resource-scoped", () => {
+  const root = fs.readFileSync(path.resolve("../..", "env/dev/main.tf"), "utf8");
+  for (const moduleName of ["rds", "experiment"]) {
+    const block = root.match(new RegExp(`module "${moduleName}" \\{([\\s\\S]*?)\\n\\}`));
+    assert.ok(block, `missing module ${moduleName}`);
+    assert.doesNotMatch(
+      block[1],
+      /\bdepends_on\s*=/,
+      `module ${moduleName} must rely on its resource input references`,
+    );
+  }
+});

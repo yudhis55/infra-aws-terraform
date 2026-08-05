@@ -11,6 +11,11 @@ module is enabled. Normal infrastructure plans keep the module disabled. The
 agent and its IAM/profile/security-group resources are removed through a saved
 Terraform cleanup plan; they must never be left running after the campaign.
 
+The root module relies on the VPC, subnet, and drift-target input references
+for dependency ordering. A module-level `depends_on` must not be added because
+it can defer the AL2023 AMI lookup when the drift target changes and create a
+false EC2 replacement during the exact-tag recovery plan.
+
 Egress is intentionally limited to HTTPS, VPC DNS, PostgreSQL, and the ECS
 dynamic port range. The latter two permit explicit denial tests against known
 targets; destination security groups remain the enforcement boundary. No CIDR
