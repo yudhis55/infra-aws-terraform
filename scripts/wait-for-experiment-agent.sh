@@ -28,15 +28,16 @@ for _ in $(seq 1 60); do
 done
 [ "$ping_status" = Online ] || { echo "agent did not become SSM Online within 600 seconds" >&2; exit 3; }
 
+# shellcheck disable=SC2016 # Command substitution is intentionally deferred to the SSM target.
 command_id="$(aws ssm send-command \
   --document-name AWS-RunShellScript \
   --instance-ids "$instance_id" \
-  --timeout-seconds 60 \
+  --timeout-seconds 360 \
   --comment "readiness-$campaign_id" \
-  --parameters 'commands=["set -euo pipefail","docker info >/dev/null"]' \
+  --parameters 'commands=["set -euo pipefail","for attempt in $(seq 1 60); do if test -f /var/lib/eepistore-experiment/ready && docker info >/dev/null 2>&1; then exit 0; fi; sleep 5; done","echo bootstrap readiness failed >&2","tail -n 200 /var/log/eepistore-experiment-bootstrap.log /var/log/cloud-init-output.log >&2 || true","exit 1"]' \
   --query 'Command.CommandId' --output text)"
 
-for _ in $(seq 1 24); do
+for _ in $(seq 1 78); do
   command_status="$(aws ssm get-command-invocation \
     --command-id "$command_id" --instance-id "$instance_id" \
     --query Status --output text 2>/dev/null || true)"

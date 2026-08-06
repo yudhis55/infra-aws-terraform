@@ -49,9 +49,13 @@ collection, dan destroy hemat biaya. Gunakan bersama
    hanya mengulang kegagalan konektivitas Prisma `P1001` secara terbatas;
    error lain langsung menghentikan workflow. Migration tidak boleh
    diulang manual di luar workflow untuk menutupi readiness race.
-6. Setelah apply, simpan link run, run ID, artifact `terraform-plan`, dan
+6. Experiment agent wajib memiliki marker
+   `/var/lib/eepistore-experiment/ready` dan `docker info` sukses. Jika tidak,
+   artifact readiness memuat tail log bootstrap/cloud-init untuk diagnosis;
+   jangan menjalankan request eksperimen.
+7. Setelah apply, simpan link run, run ID, artifact `terraform-plan`, dan
    artifact `post-apply-verification` di `docs/evidence-register.md`.
-7. Jika apply gagal, jangan lanjut deploy app terpisah. Analisis state, events,
+8. Jika apply gagal, jangan lanjut deploy app terpisah. Analisis state, events,
    dan resource aktual terlebih dahulu.
 
 ### Recovery Log Group di Luar State

@@ -89,3 +89,22 @@ test("uses a high-severity unrestricted-ingress IaC positive control", () => {
   assert.match(fixture, /protocol\s*=\s*"-1"/);
   assert.match(fixture, /cidr_blocks\s*=\s*\["0\.0\.0\.0\/0"\]/);
 });
+
+test("orders WAF cleanup before removing the temporary IP set", () => {
+  const waf = fs.readFileSync(path.resolve("../..", "modules/security/waf.tf"), "utf8");
+  const block = waf.match(/resource "aws_wafv2_web_acl" "main" \{([\s\S]*?)\n\}/);
+  assert.ok(block, "missing WAF Web ACL resource");
+  assert.match(block[1], /depends_on\s*=\s*\[aws_wafv2_ip_set\.experiment_source\]/);
+});
+
+test("requires a durable Docker readiness marker on the experiment agent", () => {
+  const agent = fs.readFileSync(path.resolve("../..", "modules/experiment/main.tf"), "utf8");
+  const readiness = fs.readFileSync(
+    path.resolve("../..", "scripts/wait-for-experiment-agent.sh"),
+    "utf8",
+  );
+  assert.match(agent, /for attempt in 1 2 3 4 5/);
+  assert.match(agent, /\/var\/lib\/eepistore-experiment\/ready/);
+  assert.match(readiness, /test -f \/var\/lib\/eepistore-experiment\/ready/);
+  assert.match(readiness, /eepistore-experiment-bootstrap\.log/);
+});
