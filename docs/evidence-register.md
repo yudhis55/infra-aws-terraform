@@ -84,6 +84,7 @@ runbook, tetapi tidak menggantikan paket eksperimen final:
 | `31074746171` | WAF rate run berhenti pada precondition karena experiment agent AL2023 berstatus SSM Online tetapi `docker` belum tersedia; tidak ada request uji yang dikirim | Bootstrap agent diberi retry, marker readiness, dan cloud-init diagnostics; campaign tidak dipakai sebagai hasil final | Invalid campaign; valid stop-condition evidence |
 | `31074789854` | Cleanup otomatis memulihkan sebagian state, tetapi penghapusan WAF IP set ditolak dengan `WAFAssociatedItemException` saat Web ACL masih berpropagasi | Web ACL diberi dependency eksplisit terhadap temporary IP set agar update terjadi sebelum penghapusan | Valid recovery finding; cleanup parsial |
 | `31075285225` | Continuation cleanup masih merencanakan update WAF dan delete IP set dalam run yang sama tanpa dependency baru | Run dibatalkan sebelum approval/apply untuk menghindari pengulangan error asosiasi | Valid stop-condition evidence; no mutation |
+| `31075924747` | Dependency eksplisit belum memaksa update-before-delete karena Web ACL hanya diperbarui, bukan dihancurkan; AWS kembali menolak delete IP set | IP set diubah menjadi baseline dormant dengan sentinel `127.0.0.1/32`; cleanup selanjutnya melakukan update alamat, bukan delete | Valid recovery finding; campaign tetap invalid |
 
 ## Interpretation Boundaries
 

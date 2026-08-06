@@ -338,16 +338,16 @@ resource "aws_wafv2_web_acl_association" "alb" {
 }
 
 resource "aws_wafv2_ip_set" "experiment_source" {
-  count              = var.enable_waf && var.experiment_mode != "off" ? 1 : 0
+  count              = var.enable_waf ? 1 : 0
   name               = "${var.project_name}-experiment-source"
-  description        = "Temporary source allowlist for bounded thesis experiments"
+  description        = "Dormant source allowlist activated only for bounded thesis experiments"
   scope              = "REGIONAL"
   ip_address_version = "IPV4"
-  addresses          = ["${var.experiment_source_ipv4}/32"]
+  addresses          = var.experiment_mode == "off" ? ["127.0.0.1/32"] : ["${var.experiment_source_ipv4}/32"]
 
   tags = {
     Environment = var.environment
-    Temporary   = "true"
+    Purpose     = "bounded-experiment-source"
   }
 }
 

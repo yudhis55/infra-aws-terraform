@@ -53,6 +53,9 @@ collection, dan destroy hemat biaya. Gunakan bersama
    `/var/lib/eepistore-experiment/ready` dan `docker info` sukses. Jika tidak,
    artifact readiness memuat tail log bootstrap/cloud-init untuk diagnosis;
    jangan menjalankan request eksperimen.
+   IP set eksperimen tetap ada dalam kondisi dormant `127.0.0.1/32`; mode
+   eksperimen hanya mengganti alamatnya ke source `/32` yang direview, lalu
+   cleanup mengembalikannya ke sentinel agar tidak terjadi race asosiasi WAF.
 7. Setelah apply, simpan link run, run ID, artifact `terraform-plan`, dan
    artifact `post-apply-verification` di `docs/evidence-register.md`.
 8. Jika apply gagal, jangan lanjut deploy app terpisah. Analisis state, events,
