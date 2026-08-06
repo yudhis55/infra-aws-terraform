@@ -226,10 +226,11 @@ jobs:
         shell: bash
         run: |
           sleep 300
+          metric_window_end="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           waf_arn="$(terraform -chdir="$TF_WORKING_DIR" output -raw waf_web_acl_arn)"
           waf_name="$(terraform -chdir="$TF_WORKING_DIR" output -raw waf_web_acl_name)"
           aws wafv2 get-sampled-requests --web-acl-arn "$waf_arn" --rule-metric-name ExperimentRateLimitMetric --scope REGIONAL --time-window "StartTime=$RATE_STARTED_AT,EndTime=$RATE_ENDED_AT" --max-items 100 > campaign-evidence/security/waf-rate/sampled.json
-          aws cloudwatch get-metric-statistics --namespace AWS/WAFV2 --metric-name BlockedRequests --dimensions "Name=WebACL,Value=$waf_name" "Name=Rule,Value=ExperimentRateLimit" "Name=Region,Value=$AWS_REGION" --start-time "$RATE_STARTED_AT" --end-time "$RATE_ENDED_AT" --period 60 --statistics Sum > campaign-evidence/security/waf-rate/metric.json
+          aws cloudwatch get-metric-statistics --namespace AWS/WAFV2 --metric-name BlockedRequests --dimensions "Name=WebACL,Value=$waf_name" "Name=Rule,Value=ExperimentRateLimit" "Name=Region,Value=$AWS_REGION" --start-time "$RATE_STARTED_AT" --end-time "$metric_window_end" --period 60 --statistics Sum > campaign-evidence/security/waf-rate/metric.json
           generator="$(cat campaign-evidence/security/waf-rate/generator-summary.json)"
           blocked="$(jq '[.Datapoints[].Sum] | add // 0' campaign-evidence/security/waf-rate/metric.json)"
           samples="$(jq '[.SampledRequests[] | select(.Request.URI == "/api/experiment/rate-limit" and .Action == "BLOCK")] | length' campaign-evidence/security/waf-rate/sampled.json)"
