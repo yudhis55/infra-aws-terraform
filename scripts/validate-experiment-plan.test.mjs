@@ -123,3 +123,18 @@ test("allows the private AL2023 agent to read the regional package repository", 
   assert.match(endpoints, /Sid\s*=\s*"AllowAmazonLinux2023Packages"/);
   assert.match(endpoints, /Action\s*=\s*\["s3:GetObject"\]/);
 });
+
+test("preserves the bounded WAF generator summary as a JSON object", () => {
+  const generator = fs.readFileSync(
+    path.resolve("../..", "scripts/run-waf-rate-test.sh"),
+    "utf8",
+  );
+  const workflow = fs.readFileSync(
+    path.resolve("../..", ".github/workflows/research-campaign.yml"),
+    "utf8",
+  );
+  assert.match(generator, /<<< "\$summary" > \/dev\/null/);
+  assert.match(generator, /jq '\.' <<< "\$summary" > "\$out_dir\/generator-summary\.json"/);
+  assert.match(workflow, /metric_window_end="\$\(date -u \+%Y-%m-%dT%H:%M:%SZ\)"/);
+  assert.match(workflow, /--end-time "\$metric_window_end"/);
+});

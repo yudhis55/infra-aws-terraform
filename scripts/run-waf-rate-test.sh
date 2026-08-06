@@ -45,4 +45,5 @@ jq -e '.Status == "Success"' "$out_dir/invocation.json" > /dev/null
 jq -r '.StandardOutputContent' "$out_dir/invocation.json" > "$out_dir/generator.log"
 summary="$(grep '^WAF_RATE_SUMMARY=' "$out_dir/generator.log" | tail -1 | cut -d= -f2-)"
 jq -e '.totalRequests <= 150 and .maxRateRps == 2 and .maxDurationSeconds == 120 and .blockedRequests == 1' \
-  <<< "$summary" > "$out_dir/generator-summary.json"
+  <<< "$summary" > /dev/null
+jq '.' <<< "$summary" > "$out_dir/generator-summary.json"
