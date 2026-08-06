@@ -90,6 +90,7 @@ runbook, tetapi tidak menggantikan paket eksperimen final:
 | `31077865454` | Cleanup setelah diagnostic WAF merencanakan 7 delete agent dan 2 update WAF in-place | Cleanup selesai, agent dihapus, dan WAF kembali ke baseline dormant tanpa association race | Valid recovery/cleanup evidence; non-canonical |
 | `31078592898` / `31078929903` | S3 endpoint policy AL2023 diterapkan sebagai satu update in-place; post-apply verification lulus dan agent baru berhasil bootstrap dengan Docker ready | Membuktikan allowlist bucket paket resmi memperbaiki private agent tanpa membuka seluruh S3 | Valid recovery/network remediation evidence; non-canonical |
 | `31079409441` | Bounded request sequence mencapai satu HTTP 429 dan sampled request WAF sesuai endpoint, tetapi normalisasi menyimpan hasil validasi `jq` sebagai boolean serta query CloudWatch memakai end time sebelum datapoint matang | Pisahkan validasi dari penulisan object JSON dan perluas akhir jendela metric hingga waktu koleksi setelah propagation wait | Invalid campaign; valid evidence-normalization finding |
+| `31079904633` | Cleanup yang sudah direview dibatalkan ketika merge PR memicu run `push` pada concurrency group yang sama | Concurrency group dipisahkan berdasarkan event agar validasi branch tidak dapat membatalkan operasi manual; cleanup dijalankan ulang sebelum eksperimen berikutnya | Valid workflow-race finding; no cleanup mutation occurred |
 
 ## Interpretation Boundaries
 
