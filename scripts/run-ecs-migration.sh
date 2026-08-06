@@ -70,44 +70,90 @@ if [ "$proxy_ready" != true ]; then
   exit 1
 fi
 
-task_arn="$(aws ecs run-task \
-  --cluster "$cluster" \
-  --task-definition "$task_definition" \
-  --count 1 \
-  --started-by "terraform-${GITHUB_RUN_ID:-local}-migration" \
-  --overrides '{"containerOverrides":[{"name":"app","command":["node","node_modules/prisma/build/index.js","migrate","deploy"]}]}' \
-  --query 'tasks[0].taskArn' --output text)"
+migration_max_attempts="${MIGRATION_TASK_MAX_ATTEMPTS:-3}"
+migration_retry_delay="${MIGRATION_TASK_RETRY_DELAY_SECONDS:-30}"
+attempt_records="$out_dir/attempts.ndjson"
+: > "$attempt_records"
 
-if [ -z "$task_arn" ] || [ "$task_arn" = "None" ]; then
-  echo "ECS did not start the migration task" >&2
-  exit 1
-fi
+for ((migration_attempt = 1; migration_attempt <= migration_max_attempts; migration_attempt++)); do
+  attempt_dir="$out_dir/attempt-${migration_attempt}"
+  mkdir -p "$attempt_dir"
+  attempt_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-aws ecs wait tasks-stopped --cluster "$cluster" --tasks "$task_arn"
-aws ecs describe-tasks --cluster "$cluster" --tasks "$task_arn" > "$out_dir/task.json"
+  task_arn="$(aws ecs run-task \
+    --cluster "$cluster" \
+    --task-definition "$task_definition" \
+    --count 1 \
+    --started-by "terraform-${GITHUB_RUN_ID:-local}-migration-${migration_attempt}" \
+    --overrides '{"containerOverrides":[{"name":"app","command":["node","node_modules/prisma/build/index.js","migrate","deploy"]}]}' \
+    --query 'tasks[0].taskArn' --output text)"
 
-task_id="${task_arn##*/}"
-stream_name="ecs/app/${task_id}"
-for attempt in 1 2 3 4 5; do
-  if aws logs get-log-events \
-    --log-group-name "$log_group" \
-    --log-stream-name "$stream_name" \
-    --start-from-head > "$out_dir/logs.json" 2> "$out_dir/logs-error.txt"; then
-    rm -f "$out_dir/logs-error.txt"
-    break
+  if [ -z "$task_arn" ] || [ "$task_arn" = "None" ]; then
+    echo "ECS did not start migration task attempt $migration_attempt" >&2
+    exit 1
   fi
-  sleep "$attempt"
-done
 
-if [ ! -s "$out_dir/logs.json" ]; then
-  echo "Unable to collect migration logs from $stream_name" >&2
-fi
+  aws ecs wait tasks-stopped --cluster "$cluster" --tasks "$task_arn"
+  aws ecs describe-tasks --cluster "$cluster" --tasks "$task_arn" > "$attempt_dir/task.json"
 
-exit_code="$(jq -r '.tasks[0].containers[] | select(.name == "app") | .exitCode // empty' \
-  "$out_dir/task.json")"
-if [ "$exit_code" != "0" ]; then
-  echo "Migration failed with exit code ${exit_code:-missing}" >&2
+  task_id="${task_arn##*/}"
+  stream_name="ecs/app/${task_id}"
+  for log_attempt in 1 2 3 4 5; do
+    if aws logs get-log-events \
+      --log-group-name "$log_group" \
+      --log-stream-name "$stream_name" \
+      --start-from-head > "$attempt_dir/logs.json" 2> "$attempt_dir/logs-error.txt"; then
+      rm -f "$attempt_dir/logs-error.txt"
+      break
+    fi
+    sleep "$log_attempt"
+  done
+
+  if [ ! -s "$attempt_dir/logs.json" ]; then
+    echo "Unable to collect migration logs from $stream_name" >&2
+  fi
+
+  cp "$attempt_dir/task.json" "$out_dir/task.json"
+  if [ -s "$attempt_dir/logs.json" ]; then cp "$attempt_dir/logs.json" "$out_dir/logs.json"; fi
+
+  exit_code="$(jq -r '.tasks[0].containers[] | select(.name == "app") | .exitCode // empty' \
+    "$attempt_dir/task.json")"
+  retryable=false
+  if [ "$exit_code" != "0" ] && [ -s "$attempt_dir/logs.json" ] && \
+    jq -e '[.events[]?.message] | any(test("P1001"))' "$attempt_dir/logs.json" > /dev/null; then
+    retryable=true
+  fi
+
+  attempt_status="failed"
+  if [ "$exit_code" = "0" ]; then
+    attempt_status="passed"
+  elif [ "$retryable" = true ]; then
+    attempt_status="retryable-failure"
+  fi
+  jq -n \
+    --argjson attempt "$migration_attempt" \
+    --arg status "$attempt_status" \
+    --arg taskArn "$task_arn" \
+    --arg exitCode "${exit_code:-missing}" \
+    --arg startedAt "$attempt_started_at" \
+    '{attempt:$attempt,status:$status,taskArn:$taskArn,exitCode:$exitCode,startedAt:$startedAt}' \
+    >> "$attempt_records"
+
+  if [ "$exit_code" = "0" ]; then
+    jq -s '.' "$attempt_records" > "$out_dir/attempts.json"
+    rm -f "$attempt_records"
+    printf 'PASS migration\n%s\n' "$task_arn" > "$out_dir/status.txt"
+    exit 0
+  fi
+
+  if [ "$retryable" = true ] && [ "$migration_attempt" -lt "$migration_max_attempts" ]; then
+    echo "Migration attempt $migration_attempt hit Prisma P1001; retrying after ${migration_retry_delay}s" >&2
+    sleep "$migration_retry_delay"
+    continue
+  fi
+
+  jq -s '.' "$attempt_records" > "$out_dir/attempts.json"
+  rm -f "$attempt_records"
+  echo "Migration failed with exit code ${exit_code:-missing}; retryable=$retryable" >&2
   exit 1
-fi
-
-printf 'PASS migration\n%s\n' "$task_arn" > "$out_dir/status.txt"
+done
