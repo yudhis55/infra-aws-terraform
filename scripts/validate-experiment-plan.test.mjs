@@ -138,3 +138,12 @@ test("preserves the bounded WAF generator summary as a JSON object", () => {
   assert.match(workflow, /metric_window_end="\$\(date -u \+%Y-%m-%dT%H:%M:%SZ\)"/);
   assert.match(workflow, /--end-time "\$metric_window_end"/);
 });
+
+test("isolates manual Terraform operations from branch CI concurrency", () => {
+  const workflow = fs.readFileSync(
+    path.resolve("../..", ".github/workflows/terraform-ci.yml"),
+    "utf8",
+  );
+  assert.match(workflow, /group: terraform-\$\{\{ github\.event_name \}\}-\$\{\{ github\.ref \}\}/);
+  assert.match(workflow, /cancel-in-progress: \$\{\{ github\.event_name != 'workflow_dispatch' \}\}/);
+});

@@ -48,7 +48,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: terraform-workload-${{ github.ref }}
+  # Manual workload operations must serialize with each other, while branch
+  # validation must never cancel an approved apply, cleanup, or destroy run.
+  group: terraform-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 env:
