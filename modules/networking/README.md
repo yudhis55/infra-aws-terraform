@@ -25,3 +25,7 @@ dengan bucket upload aplikasi agar endpoint policy tidak wildcard ke seluruh S3.
 Policy juga mengizinkan `s3:GetObject` ke bucket internal ECR
 `prod-<region>-starport-layer-bucket/*`. Jalur ini diperlukan agar ECS EC2 di
 private subnet bisa menarik image layer dari ECR melalui S3 gateway endpoint.
+Policy mengizinkan aksi read-only yang sama ke bucket resmi paket
+`al2023-repos-<region>-de612dc2/*`. Allowlist ini diperlukan agar instance
+Amazon Linux 2023 di private application subnet dapat memasang pembaruan atau
+paket operasional tanpa membuka endpoint ke seluruh bucket S3.

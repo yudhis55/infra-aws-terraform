@@ -110,3 +110,16 @@ test("requires a durable Docker readiness marker on the experiment agent", () =>
   assert.match(readiness, /test -f \/var\/lib\/eepistore-experiment\/ready/);
   assert.match(readiness, /eepistore-experiment-bootstrap\.log/);
 });
+
+test("allows the private AL2023 agent to read the regional package repository", () => {
+  const endpoints = fs.readFileSync(
+    path.resolve("../..", "modules/networking/vpc-endpoints.tf"),
+    "utf8",
+  );
+  assert.match(
+    endpoints,
+    /arn:aws:s3:::al2023-repos-\$\{var\.aws_region\}-de612dc2/,
+  );
+  assert.match(endpoints, /Sid\s*=\s*"AllowAmazonLinux2023Packages"/);
+  assert.match(endpoints, /Action\s*=\s*\["s3:GetObject"\]/);
+});

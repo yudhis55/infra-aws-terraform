@@ -38,6 +38,7 @@ resource "aws_vpc_endpoint" "s3" {
 locals {
   s3_endpoint_all_buckets        = contains(var.s3_endpoint_allowed_bucket_arns, "*")
   ecr_starport_layer_bucket_arn  = "arn:aws:s3:::prod-${var.aws_region}-starport-layer-bucket"
+  al2023_repository_bucket_arn   = "arn:aws:s3:::al2023-repos-${var.aws_region}-de612dc2"
   app_bucket_object_resource_arn = [for arn in var.s3_endpoint_allowed_bucket_arns : "${arn}/*"]
 }
 
@@ -91,6 +92,13 @@ resource "aws_vpc_endpoint_policy" "s3" {
         Principal = "*"
         Action    = ["s3:GetObject"]
         Resource  = ["${local.ecr_starport_layer_bucket_arn}/*"]
+      },
+      {
+        Sid       = "AllowAmazonLinux2023Packages"
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = ["s3:GetObject"]
+        Resource  = ["${local.al2023_repository_bucket_arn}/*"]
       }
     ]
   })
