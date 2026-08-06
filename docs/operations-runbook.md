@@ -44,8 +44,10 @@ collection, dan destroy hemat biaya. Gunakan bersama
 3. Review `tfplan.txt` dari run apply yang sama, bukan plan lama.
 4. Approve environment `production` hanya jika review gate lulus.
 5. Workflow menunggu target RDS Proxy berstatus `AVAILABLE` sebelum menjalankan
-   one-off Prisma migration. Review `proxy-readiness.json`, `task.json`, dan
-   `logs.json` dalam artifact `migration-evidence`; migration tidak boleh
+   one-off Prisma migration. Review `proxy-readiness.json`, `attempts.json`,
+   `task.json`, dan `logs.json` dalam artifact `migration-evidence`. Runner
+   hanya mengulang kegagalan konektivitas Prisma `P1001` secara terbatas;
+   error lain langsung menghentikan workflow. Migration tidak boleh
    diulang manual di luar workflow untuk menutupi readiness race.
 6. Setelah apply, simpan link run, run ID, artifact `terraform-plan`, dan
    artifact `post-apply-verification` di `docs/evidence-register.md`.

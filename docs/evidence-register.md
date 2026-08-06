@@ -76,6 +76,11 @@ runbook, tetapi tidak menggantikan paket eksperimen final:
 | `31017727741` | Stack campaign yang dibatalkan dihancurkan dengan plan 147 destroy | State dan resource workload diverifikasi kosong sebelum baseline baru | Valid recovery/clean baseline |
 | `31061853071` | Positive-control `FI-IAC-02` tidak menghasilkan finding HIGH/CRITICAL karena fixture hanya membuka PostgreSQL dan tidak memenuhi severity gate Trivy yang dipin | Fixture diubah menjadi unrestricted ingress seluruh protokol; wajib lulus preflight fault sebelum clean cycle berikutnya | Invalid fault evidence; valid stop-condition evidence |
 | `31061976370` | Stack campaign dibatalkan setelah fault matrix tidak lengkap dan dihancurkan dengan plan 147 destroy | State dan resource workload diverifikasi kosong sebelum fixture diperbaiki | Valid recovery/clean baseline |
+| `31063347824` | Preflight `FI-IAC-02` pada fixture unrestricted ingress menghasilkan finding sesuai severity gate | Positive-control IaC dinyatakan siap sebelum resource AWS dibuat | Valid preflight; bukan bagian dari 18 run canonical |
+| `31063409823` / `31065078156` | Cycle R pada commit infra `eeadcf4c` selesai dengan plan 140 create, seluruh verifier PASS, zero drift, lalu 140 destroy | Menunjukkan satu clean provisioning cycle, tetapi campaign tidak dipakai sebagai hasil final karena Cycle F berikutnya gagal | Valid recovery/repeatability observation; non-canonical |
+| `31066242977` | Cycle F membuat 140 resource, tetapi one-off migration pertama gagal dengan Prisma `P1001` walaupun target RDS Proxy sudah `AVAILABLE` | Stop condition dijalankan; eksperimen tidak dimulai dan run tidak dipakai sebagai Cycle F final | Invalid campaign; valid readiness-race finding |
+| `31067840407` | Retry diagnostik dengan plan `0/0/0/0` menyelesaikan migration dan post-apply verification tanpa perubahan infrastruktur | Membuktikan kegagalan sebelumnya bersifat transien pada data-plane readiness; runner migration diberi retry terbatas khusus `P1001` | Valid diagnostic; non-canonical |
+| `31068112570` | Stack campaign `eeadcf4c` yang dibatalkan dihancurkan dengan plan 140 destroy | State kosong, seluruh workload count nol, snapshot final nol, dan satu ECR prerequisite tetap ada | Valid recovery/clean baseline |
 
 ## Interpretation Boundaries
 
