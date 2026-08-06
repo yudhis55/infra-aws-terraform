@@ -8,7 +8,7 @@ sensitif tetap disimpan di GitHub Actions atau media lokal yang di-ignore.
 
 - Research campaign v2 belum menjadi evidence final sampai dua clean cycle dan
   paket 18 run lulus agregasi canonical.
-- Terraform state workload kosong dibuktikan ulang oleh run `31017727741`, artifact
+- Terraform state workload kosong dibuktikan ulang oleh run `31061976370`, artifact
   `post-destroy-verification`, dengan status `PASS terraform-state-empty`.
 - Audit AWS setelah destroy tidak menemukan VPC, NAT Gateway, EC2/ECS/ASG,
   ALB, RDS/RDS Proxy, CloudFront, secret aktif, atau bucket workload Eepistore.
@@ -74,6 +74,8 @@ runbook, tetapi tidak menggantikan paket eksperimen final:
 | `30977187906` | Stack dari Cycle R yang dibatalkan dihancurkan dengan plan 140 destroy | State kosong, seluruh workload count nol, snapshot final nol, Flow Logs group nol, dan satu ECR prerequisite tetap ada | Valid recovery/clean baseline |
 | `31017342567` | Exact-tag drift recovery ditolak karena module-level dependency memperluas perubahan menjadi replacement experiment agent dan update KMS policy | Emergency rollback run `31017571822` menghapus tag exact; dependency RDS/experiment dikembalikan ke resource-scoped input references | Invalid campaign; valid stop-condition evidence |
 | `31017727741` | Stack campaign yang dibatalkan dihancurkan dengan plan 147 destroy | State dan resource workload diverifikasi kosong sebelum baseline baru | Valid recovery/clean baseline |
+| `31061853071` | Positive-control `FI-IAC-02` tidak menghasilkan finding HIGH/CRITICAL karena fixture hanya membuka PostgreSQL dan tidak memenuhi severity gate Trivy yang dipin | Fixture diubah menjadi unrestricted ingress seluruh protokol; wajib lulus preflight fault sebelum clean cycle berikutnya | Invalid fault evidence; valid stop-condition evidence |
+| `31061976370` | Stack campaign dibatalkan setelah fault matrix tidak lengkap dan dihancurkan dengan plan 147 destroy | State dan resource workload diverifikasi kosong sebelum fixture diperbaiki | Valid recovery/clean baseline |
 
 ## Interpretation Boundaries
 
