@@ -68,8 +68,8 @@ variable "ecs_log_group_name" {
   type        = string
 }
 
-variable "waf_web_acl_name" {
-  description = "WAF Web ACL name for CloudWatch WAFV2 dimensions. Empty disables WAF-specific alarms."
+variable "waf_metric_name" {
+  description = "WAF Web ACL visibility metric name for AWS/WAFV2 dimensions. Empty disables WAF-specific alarms."
   type        = string
   default     = ""
 }

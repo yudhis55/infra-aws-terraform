@@ -147,3 +147,22 @@ test("isolates manual Terraform operations from branch CI concurrency", () => {
   assert.match(workflow, /group: terraform-\$\{\{ github\.event_name \}\}-\$\{\{ github\.ref \}\}/);
   assert.match(workflow, /cancel-in-progress: \$\{\{ github\.event_name != 'workflow_dispatch' \}\}/);
 });
+
+test("uses WAF visibility metric names for CloudWatch dimensions", () => {
+  const workflow = fs.readFileSync(
+    path.resolve("../..", ".github/workflows/research-campaign.yml"),
+    "utf8",
+  );
+  const collector = fs.readFileSync(
+    path.resolve("../..", "scripts/collect-experiment-aws.sh"),
+    "utf8",
+  );
+  const monitoring = fs.readFileSync(
+    path.resolve("../..", "modules/monitoring/dashboards.tf"),
+    "utf8",
+  );
+  assert.match(workflow, /output -raw waf_metric_name/);
+  assert.match(workflow, /Name=Rule,Value=ExperimentRateLimitMetric/);
+  assert.match(collector, /Value:"ExperimentRateLimitMetric"/);
+  assert.match(monitoring, /var\.waf_metric_name/);
+});

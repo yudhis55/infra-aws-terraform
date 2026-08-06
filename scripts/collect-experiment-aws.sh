@@ -15,7 +15,7 @@ proxy="$(terraform -chdir="$tf_dir" output -raw rds_proxy_id)"
 alb_suffix="$(terraform -chdir="$tf_dir" output -raw alb_arn_suffix)"
 tg_arn="$(terraform -chdir="$tf_dir" output -raw target_group_arn)"
 tg_suffix="$(terraform -chdir="$tf_dir" output -raw target_group_arn_suffix)"
-waf="$(terraform -chdir="$tf_dir" output -raw waf_web_acl_name)"
+waf_metric="$(terraform -chdir="$tf_dir" output -raw waf_metric_name)"
 ecs_logs="$(terraform -chdir="$tf_dir" output -raw ecs_log_group_name)"
 waf_logs="$(terraform -chdir="$tf_dir" output -raw waf_log_group_name)"
 
@@ -26,7 +26,7 @@ jq -n \
   --arg rds "$rds" \
   --arg alb "$alb_suffix" \
   --arg tg "$tg_suffix" \
-  --arg waf "$waf" \
+  --arg waf "$waf_metric" \
   --arg region "$AWS_REGION" \
   '[
     {Id:"albrequests",MetricStat:{Metric:{Namespace:"AWS/ApplicationELB",MetricName:"RequestCount",Dimensions:[{Name:"LoadBalancer",Value:$alb}]},Period:60,Stat:"Sum"},ReturnData:true},
@@ -43,7 +43,7 @@ jq -n \
     {Id:"rdsconnections",MetricStat:{Metric:{Namespace:"AWS/RDS",MetricName:"DatabaseConnections",Dimensions:[{Name:"DBInstanceIdentifier",Value:$rds}]},Period:60,Stat:"Average"},ReturnData:true},
     {Id:"wafallowed",MetricStat:{Metric:{Namespace:"AWS/WAFV2",MetricName:"AllowedRequests",Dimensions:[{Name:"WebACL",Value:$waf},{Name:"Rule",Value:"ALL"},{Name:"Region",Value:$region}]},Period:60,Stat:"Sum"},ReturnData:true},
     {Id:"wafblocked",MetricStat:{Metric:{Namespace:"AWS/WAFV2",MetricName:"BlockedRequests",Dimensions:[{Name:"WebACL",Value:$waf},{Name:"Rule",Value:"ALL"},{Name:"Region",Value:$region}]},Period:60,Stat:"Sum"},ReturnData:true},
-    {Id:"wafrateblocked",MetricStat:{Metric:{Namespace:"AWS/WAFV2",MetricName:"BlockedRequests",Dimensions:[{Name:"WebACL",Value:$waf},{Name:"Rule",Value:"ExperimentRateLimit"},{Name:"Region",Value:$region}]},Period:60,Stat:"Sum"},ReturnData:true}
+    {Id:"wafrateblocked",MetricStat:{Metric:{Namespace:"AWS/WAFV2",MetricName:"BlockedRequests",Dimensions:[{Name:"WebACL",Value:$waf},{Name:"Rule",Value:"ExperimentRateLimitMetric"},{Name:"Region",Value:$region}]},Period:60,Stat:"Sum"},ReturnData:true}
   ]' > "$out_dir/metric-queries.json"
 
 aws cloudwatch get-metric-data \

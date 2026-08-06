@@ -94,8 +94,13 @@ output "waf_web_acl_arn" {
 }
 
 output "waf_web_acl_name" {
-  description = "WAF Web ACL name used by CloudWatch metric dimensions"
+  description = "WAF Web ACL resource name"
   value       = module.security.waf_web_acl_name
+}
+
+output "waf_metric_name" {
+  description = "WAF Web ACL visibility metric name used by CloudWatch dimensions"
+  value       = module.security.waf_metric_name
 }
 
 output "waf_log_group_name" {
