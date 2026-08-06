@@ -13,6 +13,11 @@ output "waf_web_acl_name" {
   value       = try(aws_wafv2_web_acl.main[0].name, null)
 }
 
+output "waf_metric_name" {
+  description = "Web ACL visibility metric name used by AWS/WAFV2 dimensions"
+  value       = try(aws_wafv2_web_acl.main[0].visibility_config[0].metric_name, null)
+}
+
 output "waf_log_group_name" {
   description = "CloudWatch log group name for WAF logs"
   value       = try(aws_cloudwatch_log_group.waf[0].name, null)
