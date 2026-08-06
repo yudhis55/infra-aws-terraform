@@ -90,11 +90,13 @@ test("uses a high-severity unrestricted-ingress IaC positive control", () => {
   assert.match(fixture, /cidr_blocks\s*=\s*\["0\.0\.0\.0\/0"\]/);
 });
 
-test("orders WAF cleanup before removing the temporary IP set", () => {
+test("keeps a dormant IP set and orders the WAF lifecycle dependency", () => {
   const waf = fs.readFileSync(path.resolve("../..", "modules/security/waf.tf"), "utf8");
   const block = waf.match(/resource "aws_wafv2_web_acl" "main" \{([\s\S]*?)\n\}/);
   assert.ok(block, "missing WAF Web ACL resource");
   assert.match(block[1], /depends_on\s*=\s*\[aws_wafv2_ip_set\.experiment_source\]/);
+  assert.match(waf, /count\s*=\s*var\.enable_waf\s*\?\s*1\s*:\s*0/);
+  assert.match(waf, /127\.0\.0\.1\/32/);
 });
 
 test("requires a durable Docker readiness marker on the experiment agent", () => {
