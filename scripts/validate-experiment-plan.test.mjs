@@ -80,3 +80,12 @@ test("keeps RDS and experiment dependencies resource-scoped", () => {
     );
   }
 });
+
+test("uses a high-severity unrestricted-ingress IaC positive control", () => {
+  const fixture = fs.readFileSync(
+    path.resolve("../..", "tests/fault-fixtures/iac/FI-IAC-02/main.tf"),
+    "utf8",
+  );
+  assert.match(fixture, /protocol\s*=\s*"-1"/);
+  assert.match(fixture, /cidr_blocks\s*=\s*\["0\.0\.0\.0\/0"\]/);
+});
