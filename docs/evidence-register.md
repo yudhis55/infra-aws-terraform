@@ -81,6 +81,9 @@ runbook, tetapi tidak menggantikan paket eksperimen final:
 | `31066242977` | Cycle F membuat 140 resource, tetapi one-off migration pertama gagal dengan Prisma `P1001` walaupun target RDS Proxy sudah `AVAILABLE` | Stop condition dijalankan; eksperimen tidak dimulai dan run tidak dipakai sebagai Cycle F final | Invalid campaign; valid readiness-race finding |
 | `31067840407` | Retry diagnostik dengan plan `0/0/0/0` menyelesaikan migration dan post-apply verification tanpa perubahan infrastruktur | Membuktikan kegagalan sebelumnya bersifat transien pada data-plane readiness; runner migration diberi retry terbatas khusus `P1001` | Valid diagnostic; non-canonical |
 | `31068112570` | Stack campaign `eeadcf4c` yang dibatalkan dihancurkan dengan plan 140 destroy | State kosong, seluruh workload count nol, snapshot final nol, dan satu ECR prerequisite tetap ada | Valid recovery/clean baseline |
+| `31074746171` | WAF rate run berhenti pada precondition karena experiment agent AL2023 berstatus SSM Online tetapi `docker` belum tersedia; tidak ada request uji yang dikirim | Bootstrap agent diberi retry, marker readiness, dan cloud-init diagnostics; campaign tidak dipakai sebagai hasil final | Invalid campaign; valid stop-condition evidence |
+| `31074789854` | Cleanup otomatis memulihkan sebagian state, tetapi penghapusan WAF IP set ditolak dengan `WAFAssociatedItemException` saat Web ACL masih berpropagasi | Web ACL diberi dependency eksplisit terhadap temporary IP set agar update terjadi sebelum penghapusan | Valid recovery finding; cleanup parsial |
+| `31075285225` | Continuation cleanup masih merencanakan update WAF dan delete IP set dalam run yang sama tanpa dependency baru | Run dibatalkan sebelum approval/apply untuk menghindari pengulangan error asosiasi | Valid stop-condition evidence; no mutation |
 
 ## Interpretation Boundaries
 

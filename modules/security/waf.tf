@@ -6,6 +6,10 @@ resource "aws_wafv2_web_acl" "main" {
   name  = "${var.project_name}-waf-acl"
   scope = "REGIONAL"
 
+  # AWS must observe the Web ACL rule update before Terraform removes the
+  # temporary IP set during experiment cleanup.
+  depends_on = [aws_wafv2_ip_set.experiment_source]
+
   default_action {
     allow {}
   }

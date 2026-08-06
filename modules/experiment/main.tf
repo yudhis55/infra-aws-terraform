@@ -122,8 +122,24 @@ resource "aws_instance" "agent" {
   user_data = <<-EOT
     #!/bin/bash
     set -euo pipefail
-    dnf install -y docker jq
+    exec > >(tee -a /var/log/eepistore-experiment-bootstrap.log | logger -t eepistore-experiment -s 2>/dev/console) 2>&1
+    trap 'echo "bootstrap failed at line $LINENO"' ERR
+
+    installed=false
+    for attempt in 1 2 3 4 5; do
+      if dnf install -y docker jq; then
+        installed=true
+        break
+      fi
+      sleep "$((attempt * 15))"
+    done
+    test "$installed" = true
+    command -v docker
+    command -v jq
     systemctl enable --now docker
+    docker info >/dev/null
+    install -d -m 0755 /var/lib/eepistore-experiment
+    printf 'ready\n' > /var/lib/eepistore-experiment/ready
   EOT
 
   tags = {
