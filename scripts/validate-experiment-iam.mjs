@@ -162,7 +162,7 @@ assertSimulation(
 );
 assertSimulation(
   "allowed",
-  ["ecr:DescribeImages"],
+  ["ecr:DescribeImages", "ecr:DescribeRepositories"],
   [`arn:aws:ecr:${region}:${accountId}:repository/eepistore-repo`],
 );
 assertSimulation(

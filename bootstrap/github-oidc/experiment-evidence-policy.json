@@ -130,7 +130,10 @@
     {
       "Sid": "VerifyPublishedImageProvenance",
       "Effect": "Allow",
-      "Action": "ecr:DescribeImages",
+      "Action": [
+        "ecr:DescribeImages",
+        "ecr:DescribeRepositories"
+      ],
       "Resource": "arn:aws:ecr:ap-southeast-3:557947229844:repository/eepistore-repo"
     },
     {
