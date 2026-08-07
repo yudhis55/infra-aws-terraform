@@ -64,6 +64,11 @@ memperbarui policy, memvalidasinya, dan memulihkan versi sebelumnya bila gate
 gagal. `experiment-evidence.yml` hanya dipertahankan untuk reprocess evidence
 legacy schema `1.0.0`.
 
+Verifikasi provenance image hanya diberi akses baca `DescribeRepositories` dan
+`DescribeImages` pada repository `eepistore-repo`. Izin pertama memperoleh URI
+repository kanonis, sedangkan izin kedua membuktikan digest dan tag commit yang
+digunakan oleh task ECS.
+
 Perubahan akses backend plan role dijalankan melalui
 `sync-backend-oidc-policy.yml`. Workflow tersebut memvalidasi dua prefix state
 yang diizinkan, memakai approval environment `production`, membandingkan policy
