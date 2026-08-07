@@ -44,6 +44,11 @@ Kapasitas EC2 dan jumlah task ECS memakai input terpisah. `asg_*` mengatur
 container instances, sedangkan `service_*` mengatur task aplikasi. Pemisahan ini
 mencegah satu nilai scaling dipakai untuk dua lapisan yang berbeda.
 
+Setelah service dibuat, Application Auto Scaling menjadi pemilik nilai runtime
+`desired_count`. Terraform mengabaikan atribut tersebut, sedangkan batas minimum
+dan maksimum tetap dikelola melalui scalable target. Pemisahan kepemilikan ini
+mencegah scale-out yang sah dibaca sebagai drift konfigurasi.
+
 ECS service memakai target tracking CPU, memori, dan
 `ALBRequestCountPerTarget`. Target request default 300 request per target per
 menit memberi sinyal scale-out yang dapat diukur melalui trafik aplikasi nyata,

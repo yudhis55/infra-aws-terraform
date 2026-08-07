@@ -245,6 +245,11 @@ resource "aws_ecs_service" "app" {
     delete = "60m"
   }
 
+  lifecycle {
+    # Application Auto Scaling owns DesiredCount after service creation.
+    ignore_changes = [desired_count]
+  }
+
   tags = {
     Name = "${var.project_name}-service"
   }

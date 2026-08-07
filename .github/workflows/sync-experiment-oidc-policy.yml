@@ -28,6 +28,7 @@ jobs:
       AWS_REGION: ap-southeast-3
       ROLE_NAME: eepistore-infra-experiment-role
       POLICY_NAME: eepistore-experiment-evidence
+      MAX_SESSION_DURATION: "21600"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -43,7 +44,8 @@ jobs:
           mkdir -p oidc-policy-evidence
           caller_account="$(aws sts get-caller-identity --query Account --output text)"
           test "$caller_account" = "557947229844"
-          role_arn="$(aws iam get-role --role-name "$ROLE_NAME" --query 'Role.Arn' --output text)"
+          aws iam get-role --role-name "$ROLE_NAME" > oidc-policy-evidence/role-before.json
+          role_arn="$(jq -r '.Role.Arn' oidc-policy-evidence/role-before.json)"
           test "$role_arn" = "arn:aws:iam::557947229844:role/$ROLE_NAME"
           aws accessanalyzer validate-policy \
             --policy-document file://bootstrap/github-oidc/experiment-evidence-policy.json \
@@ -67,6 +69,8 @@ jobs:
         run: |
           set -euo pipefail
           rollback() {
+            before_duration="$(jq -r '.Role.MaxSessionDuration' oidc-policy-evidence/role-before.json)"
+            aws iam update-role --role-name "$ROLE_NAME" --max-session-duration "$before_duration" || true
             if [ "${{ steps.current.outputs.exists }}" = true ]; then
               aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name "$POLICY_NAME" --policy-document file://oidc-policy-evidence/policy-before-document.json
             else
@@ -74,6 +78,9 @@ jobs:
             fi
           }
           trap rollback ERR
+          aws iam update-role \
+            --role-name "$ROLE_NAME" \
+            --max-session-duration "$MAX_SESSION_DURATION"
           aws iam put-role-policy \
             --role-name "$ROLE_NAME" \
             --policy-name "$POLICY_NAME" \
@@ -83,11 +90,13 @@ jobs:
             oidc-policy-evidence/validation \
             structure
           aws iam get-role-policy --role-name "$ROLE_NAME" --policy-name "$POLICY_NAME" > oidc-policy-evidence/policy-after.json
+          aws iam get-role --role-name "$ROLE_NAME" > oidc-policy-evidence/role-after.json
+          test "$(jq -r '.Role.MaxSessionDuration' oidc-policy-evidence/role-after.json)" = "$MAX_SESSION_DURATION"
           jq -S '.PolicyDocument' oidc-policy-evidence/policy-after.json > oidc-policy-evidence/policy-after-document.json
           jq -S '.' bootstrap/github-oidc/experiment-evidence-policy.json > oidc-policy-evidence/policy-source-normalized.json
           diff -u oidc-policy-evidence/policy-source-normalized.json oidc-policy-evidence/policy-after-document.json > oidc-policy-evidence/policy-diff.txt
           trap - ERR
-          jq -n --arg role "$ROLE_NAME" --arg policy "$POLICY_NAME" --arg runId "$GITHUB_RUN_ID" '{status:"passed",roleName:$role,policyName:$policy,githubRunId:$runId}' > oidc-policy-evidence/result.json
+          jq -n --arg role "$ROLE_NAME" --arg policy "$POLICY_NAME" --arg runId "$GITHUB_RUN_ID" --argjson maxSessionDuration "$MAX_SESSION_DURATION" '{status:"passed",roleName:$role,policyName:$policy,maxSessionDuration:$maxSessionDuration,githubRunId:$runId}' > oidc-policy-evidence/result.json
       - name: Upload policy synchronization evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -64,6 +64,10 @@ memperbarui policy, memvalidasinya, dan memulihkan versi sebelumnya bila gate
 gagal. `experiment-evidence.yml` hanya dipertahankan untuk reprocess evidence
 legacy schema `1.0.0`.
 
+Workflow sinkronisasi juga menetapkan maximum session duration role eksperimen
+menjadi 21.600 detik. Runtime suite meminta durasi yang sama agar kredensial OIDC
+tetap berlaku selama timeout job 330 menit tanpa memperluas permission role.
+
 Verifikasi provenance image hanya diberi akses baca `DescribeRepositories` dan
 `DescribeImages` pada repository `eepistore-repo`. Izin pertama memperoleh URI
 repository kanonis, sedangkan izin kedua membuktikan digest dan tag commit yang

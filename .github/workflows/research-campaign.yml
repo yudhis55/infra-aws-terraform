@@ -307,6 +307,8 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_EXPERIMENT_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+          # The locked runtime suite can run for up to 330 minutes.
+          role-duration-seconds: 21600
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}

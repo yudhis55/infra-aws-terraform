@@ -148,6 +148,22 @@ test("isolates manual Terraform operations from branch CI concurrency", () => {
   assert.match(workflow, /cancel-in-progress: \$\{\{ github\.event_name != 'workflow_dispatch' \}\}/);
 });
 
+test("assigns autoscaling ownership and credentials for the full runtime suite", () => {
+  const ecs = fs.readFileSync(path.resolve("../..", "modules/ecs/main.tf"), "utf8");
+  const runtimeWorkflow = fs.readFileSync(
+    path.resolve("../..", ".github/workflows/research-campaign.yml"),
+    "utf8",
+  );
+  const syncWorkflow = fs.readFileSync(
+    path.resolve("../..", ".github/workflows/sync-experiment-oidc-policy.yml"),
+    "utf8",
+  );
+  assert.match(ecs, /ignore_changes\s*=\s*\[desired_count\]/);
+  assert.match(runtimeWorkflow, /role-duration-seconds:\s*21600/);
+  assert.match(syncWorkflow, /MAX_SESSION_DURATION:\s*"21600"/);
+  assert.match(syncWorkflow, /--max-session-duration\s+"\$MAX_SESSION_DURATION"/);
+});
+
 test("uses the WAF resource name for WebACL and visibility names for Rule dimensions", () => {
   const workflow = fs.readFileSync(
     path.resolve("../..", ".github/workflows/research-campaign.yml"),
