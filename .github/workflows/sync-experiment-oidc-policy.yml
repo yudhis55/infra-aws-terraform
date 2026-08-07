@@ -28,6 +28,8 @@ jobs:
       AWS_REGION: ap-southeast-3
       ROLE_NAME: eepistore-infra-experiment-role
       POLICY_NAME: eepistore-experiment-evidence
+      APPLY_ROLE_NAME: eepistore-infra-apply-role
+      SESSION_BOOTSTRAP_POLICY_NAME: eepistore-experiment-session-bootstrap
       MAX_SESSION_DURATION: "21600"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -52,6 +54,11 @@ jobs:
             --policy-type IDENTITY_POLICY \
             > oidc-policy-evidence/access-analyzer-before.json
           jq -e '[.findings[] | select(.findingType != "SUGGESTION")] | length == 0' oidc-policy-evidence/access-analyzer-before.json > /dev/null
+          aws accessanalyzer validate-policy \
+            --policy-document file://bootstrap/github-oidc/experiment-session-bootstrap-policy.json \
+            --policy-type IDENTITY_POLICY \
+            > oidc-policy-evidence/session-bootstrap-access-analyzer.json
+          jq -e '[.findings[] | select(.findingType != "SUGGESTION")] | length == 0' oidc-policy-evidence/session-bootstrap-access-analyzer.json > /dev/null
       - name: Capture current inline policy
         id: current
         shell: bash
@@ -64,10 +71,24 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
             jq -n '{status:"absent"}' > oidc-policy-evidence/policy-before.json
           fi
+          if aws iam get-role-policy --role-name "$APPLY_ROLE_NAME" --policy-name "$SESSION_BOOTSTRAP_POLICY_NAME" > oidc-policy-evidence/session-bootstrap-before.json 2>oidc-policy-evidence/session-bootstrap-before-error.txt; then
+            echo "session_exists=true" >> "$GITHUB_OUTPUT"
+            jq '.PolicyDocument' oidc-policy-evidence/session-bootstrap-before.json > oidc-policy-evidence/session-bootstrap-before-document.json
+          else
+            echo "session_exists=false" >> "$GITHUB_OUTPUT"
+            jq -n '{status:"absent"}' > oidc-policy-evidence/session-bootstrap-before.json
+          fi
       - name: Sync and validate the experiment policy
         shell: bash
         run: |
           set -euo pipefail
+          restore_session_bootstrap() {
+            if [ "${{ steps.current.outputs.session_exists }}" = true ]; then
+              aws iam put-role-policy --role-name "$APPLY_ROLE_NAME" --policy-name "$SESSION_BOOTSTRAP_POLICY_NAME" --policy-document file://oidc-policy-evidence/session-bootstrap-before-document.json
+            else
+              aws iam delete-role-policy --role-name "$APPLY_ROLE_NAME" --policy-name "$SESSION_BOOTSTRAP_POLICY_NAME" || true
+            fi
+          }
           rollback() {
             before_duration="$(jq -r '.Role.MaxSessionDuration' oidc-policy-evidence/role-before.json)"
             aws iam update-role --role-name "$ROLE_NAME" --max-session-duration "$before_duration" || true
@@ -76,8 +97,13 @@ jobs:
             else
               aws iam delete-role-policy --role-name "$ROLE_NAME" --policy-name "$POLICY_NAME" || true
             fi
+            restore_session_bootstrap
           }
           trap rollback ERR
+          aws iam put-role-policy \
+            --role-name "$APPLY_ROLE_NAME" \
+            --policy-name "$SESSION_BOOTSTRAP_POLICY_NAME" \
+            --policy-document file://bootstrap/github-oidc/experiment-session-bootstrap-policy.json
           aws iam update-role \
             --role-name "$ROLE_NAME" \
             --max-session-duration "$MAX_SESSION_DURATION"
@@ -95,8 +121,9 @@ jobs:
           jq -S '.PolicyDocument' oidc-policy-evidence/policy-after.json > oidc-policy-evidence/policy-after-document.json
           jq -S '.' bootstrap/github-oidc/experiment-evidence-policy.json > oidc-policy-evidence/policy-source-normalized.json
           diff -u oidc-policy-evidence/policy-source-normalized.json oidc-policy-evidence/policy-after-document.json > oidc-policy-evidence/policy-diff.txt
+          restore_session_bootstrap
           trap - ERR
-          jq -n --arg role "$ROLE_NAME" --arg policy "$POLICY_NAME" --arg runId "$GITHUB_RUN_ID" --argjson maxSessionDuration "$MAX_SESSION_DURATION" '{status:"passed",roleName:$role,policyName:$policy,maxSessionDuration:$maxSessionDuration,githubRunId:$runId}' > oidc-policy-evidence/result.json
+          jq -n --arg role "$ROLE_NAME" --arg policy "$POLICY_NAME" --arg runId "$GITHUB_RUN_ID" --argjson maxSessionDuration "$MAX_SESSION_DURATION" '{status:"passed",roleName:$role,policyName:$policy,maxSessionDuration:$maxSessionDuration,sessionBootstrapRetained:false,githubRunId:$runId}' > oidc-policy-evidence/result.json
       - name: Upload policy synchronization evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

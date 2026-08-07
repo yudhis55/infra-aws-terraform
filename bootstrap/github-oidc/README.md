@@ -67,9 +67,10 @@ legacy schema `1.0.0`.
 Workflow sinkronisasi juga menetapkan maximum session duration role eksperimen
 menjadi 21.600 detik. Runtime suite meminta durasi yang sama agar kredensial OIDC
 tetap berlaku selama timeout job 330 menit tanpa memperluas permission role.
-Policy apply memberi `iam:UpdateRole` hanya pada
-`eepistore-infra-experiment-role`; role apply tidak dapat menggunakan action
-tersebut untuk role lain.
+Saat sinkronisasi, workflow memasang policy bootstrap sementara yang memberi
+`iam:UpdateRole` hanya pada `eepistore-infra-experiment-role`. Policy sementara
+tersebut dihapus kembali setelah sukses dan dipulihkan ke kondisi awal saat
+rollback, sehingga izin itu tidak menjadi permission berdiri pada apply role.
 
 Verifikasi provenance image hanya diberi akses baca `DescribeRepositories` dan
 `DescribeImages` pada repository `eepistore-repo`. Izin pertama memperoleh URI
