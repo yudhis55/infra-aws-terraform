@@ -225,14 +225,22 @@ jobs:
       - name: Collect WAF metric and sampled requests
         shell: bash
         run: |
-          sleep 300
-          metric_window_end="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           waf_arn="$(terraform -chdir="$TF_WORKING_DIR" output -raw waf_web_acl_arn)"
-          waf_metric_name="$(terraform -chdir="$TF_WORKING_DIR" output -raw waf_metric_name)"
+          waf_web_acl_name="$(terraform -chdir="$TF_WORKING_DIR" output -raw waf_web_acl_name)"
+          blocked=0
+          metric_attempt=0
+          for metric_attempt in $(seq 1 10); do
+            sleep 60
+            metric_window_end="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            aws cloudwatch get-metric-statistics --namespace AWS/WAFV2 --metric-name BlockedRequests --dimensions "Name=WebACL,Value=$waf_web_acl_name" "Name=Rule,Value=ExperimentRateLimitMetric" "Name=Region,Value=$AWS_REGION" --start-time "$RATE_STARTED_AT" --end-time "$metric_window_end" --period 60 --statistics Sum > campaign-evidence/security/waf-rate/metric.json
+            blocked="$(jq '[.Datapoints[].Sum] | add // 0' campaign-evidence/security/waf-rate/metric.json)"
+            if jq -e --argjson blocked "$blocked" '$blocked > 0' > /dev/null; then break; fi
+          done
+          jq -n --argjson attempts "$metric_attempt" --arg collectedAt "$metric_window_end" --argjson blocked "$blocked" \
+            '{attempts:$attempts,collectedAt:$collectedAt,metricBlockedRequests:$blocked}' \
+            > campaign-evidence/security/waf-rate/metric-propagation.json
           aws wafv2 get-sampled-requests --web-acl-arn "$waf_arn" --rule-metric-name ExperimentRateLimitMetric --scope REGIONAL --time-window "StartTime=$RATE_STARTED_AT,EndTime=$RATE_ENDED_AT" --max-items 100 > campaign-evidence/security/waf-rate/sampled.json
-          aws cloudwatch get-metric-statistics --namespace AWS/WAFV2 --metric-name BlockedRequests --dimensions "Name=WebACL,Value=$waf_metric_name" "Name=Rule,Value=ExperimentRateLimitMetric" "Name=Region,Value=$AWS_REGION" --start-time "$RATE_STARTED_AT" --end-time "$metric_window_end" --period 60 --statistics Sum > campaign-evidence/security/waf-rate/metric.json
           generator="$(cat campaign-evidence/security/waf-rate/generator-summary.json)"
-          blocked="$(jq '[.Datapoints[].Sum] | add // 0' campaign-evidence/security/waf-rate/metric.json)"
           samples="$(jq '[.SampledRequests[] | select(.Request.URI == "/api/experiment/rate-limit" and .Action == "BLOCK")] | length' campaign-evidence/security/waf-rate/sampled.json)"
           jq -n --argjson generator "$generator" --argjson blocked "$blocked" --argjson samples "$samples" \
             '$generator + {metricBlockedRequests:$blocked,metricCorrelated:($blocked > 0),sampledBlockedRequests:$samples,sampleCorrelated:($samples > 0),scopeViolation:false,cleanupStatus:"pending"}' \

@@ -15,7 +15,7 @@ proxy="$(terraform -chdir="$tf_dir" output -raw rds_proxy_id)"
 alb_suffix="$(terraform -chdir="$tf_dir" output -raw alb_arn_suffix)"
 tg_arn="$(terraform -chdir="$tf_dir" output -raw target_group_arn)"
 tg_suffix="$(terraform -chdir="$tf_dir" output -raw target_group_arn_suffix)"
-waf_metric="$(terraform -chdir="$tf_dir" output -raw waf_metric_name)"
+waf_web_acl_name="$(terraform -chdir="$tf_dir" output -raw waf_web_acl_name)"
 ecs_logs="$(terraform -chdir="$tf_dir" output -raw ecs_log_group_name)"
 waf_logs="$(terraform -chdir="$tf_dir" output -raw waf_log_group_name)"
 
@@ -26,7 +26,7 @@ jq -n \
   --arg rds "$rds" \
   --arg alb "$alb_suffix" \
   --arg tg "$tg_suffix" \
-  --arg waf "$waf_metric" \
+  --arg waf "$waf_web_acl_name" \
   --arg region "$AWS_REGION" \
   '[
     {Id:"albrequests",MetricStat:{Metric:{Namespace:"AWS/ApplicationELB",MetricName:"RequestCount",Dimensions:[{Name:"LoadBalancer",Value:$alb}]},Period:60,Stat:"Sum"},ReturnData:true},

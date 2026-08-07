@@ -242,7 +242,7 @@ module "monitoring" {
   target_group_arn_suffix    = module.ecs.target_group_arn_suffix
   rds_instance_id            = module.rds.rds_instance_id
   ecs_log_group_name         = module.ecs.cloudwatch_log_group_name
-  waf_metric_name            = coalesce(module.security.waf_metric_name, "")
+  waf_web_acl_name           = coalesce(module.security.waf_web_acl_name, "")
   waf_log_group_name         = coalesce(module.security.waf_log_group_name, "")
   vpc_flow_log_group_name    = module.security.vpc_flow_logs_log_group
   enable_detailed_monitoring = var.enable_detailed_monitoring

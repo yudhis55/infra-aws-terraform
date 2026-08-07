@@ -99,7 +99,7 @@ output "waf_web_acl_name" {
 }
 
 output "waf_metric_name" {
-  description = "WAF Web ACL visibility metric name used by CloudWatch dimensions"
+  description = "WAF Web ACL visibility metric name; AWS/WAFV2 WebACL dimension queries use waf_web_acl_name instead"
   value       = module.security.waf_metric_name
 }
 

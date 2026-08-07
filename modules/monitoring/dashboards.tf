@@ -175,8 +175,8 @@ resource "aws_cloudwatch_dashboard" "security" {
       {
         type = "metric"
         properties = {
-          metrics = var.waf_metric_name != "" ? [
-            ["AWS/WAFV2", "BlockedRequests", "WebACL", var.waf_metric_name, "Rule", "ALL", "Region", var.aws_region, { stat = "Sum", label = "Blocked" }],
+          metrics = var.waf_web_acl_name != "" ? [
+            ["AWS/WAFV2", "BlockedRequests", "WebACL", var.waf_web_acl_name, "Rule", "ALL", "Region", var.aws_region, { stat = "Sum", label = "Blocked" }],
             [".", "AllowedRequests", ".", ".", ".", ".", ".", ".", { stat = "Sum", label = "Allowed" }]
           ] : []
           period = 300

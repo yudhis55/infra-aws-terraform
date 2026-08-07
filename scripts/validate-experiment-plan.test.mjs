@@ -148,7 +148,7 @@ test("isolates manual Terraform operations from branch CI concurrency", () => {
   assert.match(workflow, /cancel-in-progress: \$\{\{ github\.event_name != 'workflow_dispatch' \}\}/);
 });
 
-test("uses WAF visibility metric names for CloudWatch dimensions", () => {
+test("uses the WAF resource name for WebACL and visibility names for Rule dimensions", () => {
   const workflow = fs.readFileSync(
     path.resolve("../..", ".github/workflows/research-campaign.yml"),
     "utf8",
@@ -161,8 +161,11 @@ test("uses WAF visibility metric names for CloudWatch dimensions", () => {
     path.resolve("../..", "modules/monitoring/dashboards.tf"),
     "utf8",
   );
-  assert.match(workflow, /output -raw waf_metric_name/);
+  assert.match(workflow, /output -raw waf_web_acl_name/);
   assert.match(workflow, /Name=Rule,Value=ExperimentRateLimitMetric/);
+  assert.match(workflow, /for metric_attempt in \$\(seq 1 10\)/);
+  assert.match(workflow, /metric-propagation\.json/);
+  assert.match(collector, /output -raw waf_web_acl_name/);
   assert.match(collector, /Value:"ExperimentRateLimitMetric"/);
-  assert.match(monitoring, /var\.waf_metric_name/);
+  assert.match(monitoring, /var\.waf_web_acl_name/);
 });
