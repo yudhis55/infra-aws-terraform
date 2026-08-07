@@ -108,6 +108,17 @@ variable "proxy_max_idle_connections" {
 }
 
 # ==================== ECS CONFIGURATION ====================
+variable "ecs_ami_id" {
+  description = "Pinned ECS-optimized Amazon Linux 2023 AMI ID; update only through a reviewed source change"
+  type        = string
+  default     = "ami-063e32682782707c0"
+
+  validation {
+    condition     = can(regex("^ami-[0-9a-f]{17}$", var.ecs_ami_id))
+    error_message = "ecs_ami_id must be a valid long-format AMI ID."
+  }
+}
+
 variable "ecs_instance_type" {
   description = "EC2 instance type for ECS (t3.small=2GB, t3.medium=4GB, t3.large=8GB)"
   type        = string

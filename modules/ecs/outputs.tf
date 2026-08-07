@@ -93,6 +93,11 @@ output "launch_template_latest_version" {
   value       = aws_launch_template.ecs.latest_version
 }
 
+output "ecs_ami_id" {
+  description = "Pinned ECS-optimized Amazon Linux 2023 AMI ID"
+  value       = aws_launch_template.ecs.image_id
+}
+
 output "acm_certificate_arn" {
   description = "ARN of ACM certificate for HTTPS"
   value       = var.enable_https ? var.acm_certificate_arn : null

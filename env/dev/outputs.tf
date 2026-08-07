@@ -53,6 +53,11 @@ output "asg_name" {
   value       = module.ecs.asg_name
 }
 
+output "ecs_ami_id" {
+  description = "Pinned ECS-optimized Amazon Linux 2023 AMI used by container instances"
+  value       = module.ecs.ecs_ami_id
+}
+
 output "rds_instance_id" {
   description = "RDS instance identifier"
   value       = module.rds.rds_instance_id
