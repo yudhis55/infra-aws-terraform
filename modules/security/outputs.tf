@@ -14,7 +14,7 @@ output "waf_web_acl_name" {
 }
 
 output "waf_metric_name" {
-  description = "Web ACL visibility metric name used by AWS/WAFV2 dimensions"
+  description = "Web ACL visibility metric name configured on the ACL; this is not the AWS/WAFV2 WebACL dimension value"
   value       = try(aws_wafv2_web_acl.main[0].visibility_config[0].metric_name, null)
 }
 

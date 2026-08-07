@@ -267,7 +267,7 @@ resource "aws_cloudwatch_metric_alarm" "rds_write_latency" {
 # Monitor WAF blocking activity and anomalies
 
 resource "aws_cloudwatch_metric_alarm" "waf_blocked_requests_spike" {
-  count               = var.waf_metric_name != "" ? 1 : 0
+  count               = var.waf_web_acl_name != "" ? 1 : 0
   alarm_name          = "${var.project_name}-waf-blocked-requests-spike"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
@@ -280,7 +280,7 @@ resource "aws_cloudwatch_metric_alarm" "waf_blocked_requests_spike" {
   alarm_actions       = [aws_sns_topic.alerts.arn]
 
   dimensions = {
-    WebACL = var.waf_metric_name
+    WebACL = var.waf_web_acl_name
     Rule   = "ALL"
     Region = var.aws_region
   }

@@ -8,8 +8,9 @@ sensitif tetap disimpan di GitHub Actions atau media lokal yang di-ignore.
 
 - Research campaign v2 belum menjadi evidence final sampai dua clean cycle dan
   paket 18 run lulus agregasi canonical.
-- Terraform state workload kosong dibuktikan ulang oleh run `31061976370`, artifact
-  `post-destroy-verification`, dengan status `PASS terraform-state-empty`.
+- Terraform state workload kosong dibuktikan ulang oleh run `31152404189`,
+  artifact `post-destroy-verification`, dengan status
+  `PASS terraform-state-empty` dan `PASS aws-workload-resources-absent`.
 - Audit AWS setelah destroy tidak menemukan VPC, NAT Gateway, EC2/ECS/ASG,
   ALB, RDS/RDS Proxy, CloudFront, secret aktif, atau bucket workload Eepistore.
 - Tepat satu ECR bootstrap sengaja dipertahankan agar image digest identik dapat
@@ -18,6 +19,38 @@ sensitif tetap disimpan di GitHub Actions atau media lokal yang di-ignore.
   sertifikat regional domain utama sengaja dipertahankan.
 - Data Billing dan Cost Explorer harus diperiksa terpisah karena tidak
   real-time.
+
+## Superseded Diagnostic Campaign Baseline
+
+Baseline berikut digunakan oleh campaign diagnostik
+`campaign-20260807-405139f-c803f2a`. Campaign dihentikan dan tidak berstatus
+`Valid final` setelah gate metric WAF menemukan kesalahan semantik dimensi
+CloudWatch. Commit infra baru, campaign ID baru, dan input digest baru wajib
+dibekukan setelah perbaikan digabungkan.
+
+| Input | Frozen value | Verification |
+| --- | --- | --- |
+| App commit | `405139fbad17dd45ddc2d3e7ed5416fbac3af3ec` | App `main`; quality, SAST, SCA, build, SBOM, dan container scan lulus |
+| App publish | Run `30860780456` | Artifact `published-image`; publish ECR dan attestation sukses |
+| Image digest | `sha256:bbdab02f18702a384dbcf4519be73d522febc32eaaa4936f92c53ca6c089a560` | GitHub variable memakai immutable digest URI |
+| Infra commit | `c803f2ae8c72221183fd93202b26dd25ecc76fe4` | PR `#51` merged; main CI run `31145560821` lulus |
+| Default Terraform plan | Run `31145648300` | `141 create, 0 update, 0 delete, 0 replace`; tidak dijalankan apply |
+| Clean starting state | Run `31136824762` | State kosong dan seluruh kategori workload nol; satu ECR bootstrap dipertahankan |
+
+Cycle R apply `31146233163` dan destroy `31147951717` lulus. Cycle F apply
+`31149111839`, agent `31150898679`, drift injection `31151173812`, drift
+recovery `31151227111`, dan rate-mode transition `31151486664` juga lulus.
+Bounded WAF run `31151708568` menghasilkan 134 request, tepat satu HTTP 429,
+dan satu sampled request yang cocok, tetapi gate metric gagal karena query
+memakai visibility metric ACL sebagai nilai dimensi `WebACL`. Cleanup
+`31152100706` dan destroy `31152404189` kemudian lulus; state serta seluruh
+kategori workload kembali nol.
+
+AWS `list-metrics` membuktikan bahwa dimensi seri aktual adalah
+`WebACL=eepistore-waf-acl` dan `Rule=ExperimentRateLimitMetric`. Query read-only
+dengan pasangan dimensi tersebut mengembalikan `BlockedRequests Sum=1` untuk
+jendela pengujian. Bukti manual ini hanya mendukung diagnosis; evidence final
+tetap harus dihasilkan ulang oleh workflow yang telah diperbaiki.
 
 ## Evidence Rules
 
@@ -91,7 +124,10 @@ runbook, tetapi tidak menggantikan paket eksperimen final:
 | `31078592898` / `31078929903` | S3 endpoint policy AL2023 diterapkan sebagai satu update in-place; post-apply verification lulus dan agent baru berhasil bootstrap dengan Docker ready | Membuktikan allowlist bucket paket resmi memperbaiki private agent tanpa membuka seluruh S3 | Valid recovery/network remediation evidence; non-canonical |
 | `31079409441` | Bounded request sequence mencapai satu HTTP 429 dan sampled request WAF sesuai endpoint, tetapi normalisasi menyimpan hasil validasi `jq` sebagai boolean serta query CloudWatch memakai end time sebelum datapoint matang | Pisahkan validasi dari penulisan object JSON dan perluas akhir jendela metric hingga waktu koleksi setelah propagation wait | Invalid campaign; valid evidence-normalization finding |
 | `31079904633` | Cleanup yang sudah direview dibatalkan ketika merge PR memicu run `push` pada concurrency group yang sama | Concurrency group dipisahkan berdasarkan event agar validasi branch tidak dapat membatalkan operasi manual; cleanup dijalankan ulang sebelum eksperimen berikutnya | Valid workflow-race finding; no cleanup mutation occurred |
-| `31081037634` | Generator menghasilkan 131 request dan berhenti pada satu HTTP 429; sampled request WAF cocok, tetapi seri CloudWatch kosong karena query memakai resource/rule name alih-alih `VisibilityConfig.metric_name` | Tambahkan output `waf_metric_name` dan gunakan metric name Web ACL/rule secara konsisten pada workflow, collector, alarm, dan dashboard | Invalid campaign; valid observability-dimension finding |
+| `31081037634` | Generator menghasilkan 131 request dan berhenti pada satu HTTP 429; sampled request WAF cocok, tetapi seri CloudWatch kosong | Perbaikan awal menyamakan dimensi `WebACL` dengan visibility metric ACL; campaign berikutnya membuktikan asumsi ini masih salah | Invalid campaign; valid observability-dimension finding yang superseded |
+| `31125920820` | Cleanup yang sebelumnya gagal mendapat runner selama outage GitHub Actions dijalankan ulang dengan saved plan `0 create, 2 update, 7 destroy, 0 replace` | Agent eksperimen dihapus, source IP set kembali ke sentinel, mode WAF kembali `off`, dan verifier eksperimen lulus | Valid recovery/cleanup evidence; non-canonical |
+| `31136824762` | Controlled destroy memakai plan `0 create, 0 update, 141 destroy, 0 replace`; ECS drain selesai sebelum apply | State kosong, seluruh kategori workload dan snapshot final nol, satu ECR prerequisite tetap ada | Valid recovery/clean baseline; kandidat titik awal campaign berikutnya |
+| `31151708568` | Bounded run menghasilkan 134 request, satu HTTP 429, dan satu sampled request cocok; metric kosong karena dimensi `WebACL` memakai `eepistore-waf-metrics` | AWS `list-metrics` membuktikan nilai yang benar adalah resource name `eepistore-waf-acl`; workflow, collector, alarm, dashboard, dan test regresi dikoreksi, lalu stack dihancurkan oleh run `31152404189` | Invalid campaign; valid stop-condition and observability finding |
 
 ## Interpretation Boundaries
 
