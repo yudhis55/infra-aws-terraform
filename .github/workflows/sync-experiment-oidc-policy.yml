@@ -78,17 +78,25 @@ jobs:
             echo "session_exists=false" >> "$GITHUB_OUTPUT"
             jq -n '{status:"absent"}' > oidc-policy-evidence/session-bootstrap-before.json
           fi
-      - name: Sync and validate the experiment policy
+      - name: Install temporary session bootstrap
         shell: bash
         run: |
           set -euo pipefail
-          restore_session_bootstrap() {
-            if [ "${{ steps.current.outputs.session_exists }}" = true ]; then
-              aws iam put-role-policy --role-name "$APPLY_ROLE_NAME" --policy-name "$SESSION_BOOTSTRAP_POLICY_NAME" --policy-document file://oidc-policy-evidence/session-bootstrap-before-document.json
-            else
-              aws iam delete-role-policy --role-name "$APPLY_ROLE_NAME" --policy-name "$SESSION_BOOTSTRAP_POLICY_NAME" || true
-            fi
-          }
+          aws iam put-role-policy \
+            --role-name "$APPLY_ROLE_NAME" \
+            --policy-name "$SESSION_BOOTSTRAP_POLICY_NAME" \
+            --policy-document file://bootstrap/github-oidc/experiment-session-bootstrap-policy.json
+      - name: Refresh credentials with session bootstrap
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ secrets.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          unset-current-credentials: true
+      - name: Sync and validate the experiment policy
+        id: sync
+        shell: bash
+        run: |
+          set -euo pipefail
           rollback() {
             before_duration="$(jq -r '.Role.MaxSessionDuration' oidc-policy-evidence/role-before.json)"
             aws iam update-role --role-name "$ROLE_NAME" --max-session-duration "$before_duration" || true
@@ -97,16 +105,20 @@ jobs:
             else
               aws iam delete-role-policy --role-name "$ROLE_NAME" --policy-name "$POLICY_NAME" || true
             fi
-            restore_session_bootstrap
           }
           trap rollback ERR
-          aws iam put-role-policy \
-            --role-name "$APPLY_ROLE_NAME" \
-            --policy-name "$SESSION_BOOTSTRAP_POLICY_NAME" \
-            --policy-document file://bootstrap/github-oidc/experiment-session-bootstrap-policy.json
-          aws iam update-role \
-            --role-name "$ROLE_NAME" \
-            --max-session-duration "$MAX_SESSION_DURATION"
+          updated=false
+          for attempt in $(seq 1 12); do
+            if aws iam update-role \
+              --role-name "$ROLE_NAME" \
+              --max-session-duration "$MAX_SESSION_DURATION"; then
+              updated=true
+              break
+            fi
+            echo "IAM bootstrap permission is not visible yet (attempt $attempt/12); retrying in 5 seconds" >&2
+            sleep 5
+          done
+          test "$updated" = true
           aws iam put-role-policy \
             --role-name "$ROLE_NAME" \
             --policy-name "$POLICY_NAME" \
@@ -121,9 +133,58 @@ jobs:
           jq -S '.PolicyDocument' oidc-policy-evidence/policy-after.json > oidc-policy-evidence/policy-after-document.json
           jq -S '.' bootstrap/github-oidc/experiment-evidence-policy.json > oidc-policy-evidence/policy-source-normalized.json
           diff -u oidc-policy-evidence/policy-source-normalized.json oidc-policy-evidence/policy-after-document.json > oidc-policy-evidence/policy-diff.txt
-          restore_session_bootstrap
           trap - ERR
-          jq -n --arg role "$ROLE_NAME" --arg policy "$POLICY_NAME" --arg runId "$GITHUB_RUN_ID" --argjson maxSessionDuration "$MAX_SESSION_DURATION" '{status:"passed",roleName:$role,policyName:$policy,maxSessionDuration:$maxSessionDuration,sessionBootstrapRetained:false,githubRunId:$runId}' > oidc-policy-evidence/result.json
+      - name: Restore temporary session bootstrap
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.current.outputs.session_exists }}" = true ]; then
+            aws iam put-role-policy \
+              --role-name "$APPLY_ROLE_NAME" \
+              --policy-name "$SESSION_BOOTSTRAP_POLICY_NAME" \
+              --policy-document file://oidc-policy-evidence/session-bootstrap-before-document.json
+            aws iam get-role-policy \
+              --role-name "$APPLY_ROLE_NAME" \
+              --policy-name "$SESSION_BOOTSTRAP_POLICY_NAME" \
+              > oidc-policy-evidence/session-bootstrap-after.json
+            jq -S '.PolicyDocument' oidc-policy-evidence/session-bootstrap-after.json > oidc-policy-evidence/session-bootstrap-after-document.json
+            jq -S '.' oidc-policy-evidence/session-bootstrap-before-document.json > oidc-policy-evidence/session-bootstrap-before-normalized.json
+            diff -u \
+              oidc-policy-evidence/session-bootstrap-before-normalized.json \
+              oidc-policy-evidence/session-bootstrap-after-document.json \
+              > oidc-policy-evidence/session-bootstrap-diff.txt
+          else
+            aws iam delete-role-policy \
+              --role-name "$APPLY_ROLE_NAME" \
+              --policy-name "$SESSION_BOOTSTRAP_POLICY_NAME" \
+              || true
+            if aws iam get-role-policy \
+              --role-name "$APPLY_ROLE_NAME" \
+              --policy-name "$SESSION_BOOTSTRAP_POLICY_NAME" \
+              > oidc-policy-evidence/session-bootstrap-retained.json \
+              2>oidc-policy-evidence/session-bootstrap-retained-error.txt; then
+              echo "Temporary session bootstrap was retained" >&2
+              exit 1
+            fi
+          fi
+
+          duration="$(aws iam get-role --role-name "$ROLE_NAME" --query 'Role.MaxSessionDuration' --output text)"
+          sync_outcome="${{ steps.sync.outcome }}"
+          status="failed"
+          if [ "$sync_outcome" = success ] && [ "$duration" = "$MAX_SESSION_DURATION" ]; then
+            status="passed"
+          fi
+          jq -n \
+            --arg status "$status" \
+            --arg role "$ROLE_NAME" \
+            --arg policy "$POLICY_NAME" \
+            --arg runId "$GITHUB_RUN_ID" \
+            --arg syncOutcome "$sync_outcome" \
+            --argjson maxSessionDuration "$duration" \
+            '{status:$status,roleName:$role,policyName:$policy,maxSessionDuration:$maxSessionDuration,sessionBootstrapRetained:false,syncOutcome:$syncOutcome,githubRunId:$runId}' \
+            > oidc-policy-evidence/result.json
+          test "$status" = passed
       - name: Upload policy synchronization evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

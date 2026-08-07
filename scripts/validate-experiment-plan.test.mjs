@@ -175,7 +175,10 @@ test("assigns autoscaling ownership and credentials for the full runtime suite",
     durationStatement.Resource,
     "arn:aws:iam::557947229844:role/eepistore-infra-experiment-role",
   );
-  assert.match(syncWorkflow, /restore_session_bootstrap/);
+  assert.match(syncWorkflow, /name: Install temporary session bootstrap/);
+  assert.match(syncWorkflow, /name: Refresh credentials with session bootstrap/);
+  assert.match(syncWorkflow, /unset-current-credentials:\s*true/);
+  assert.match(syncWorkflow, /name: Restore temporary session bootstrap\n\s*if: always\(\)/);
   assert.match(syncWorkflow, /sessionBootstrapRetained:false/);
 });
 
