@@ -23,10 +23,11 @@ sumber kebenaran dan tidak diduplikasi.
 
 ## Catatan Operasional
 
-EC2 container instances memakai AWS-managed SSM parameter
-`/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended` untuk mengambil
-ECS-optimized Amazon Linux 2023 AMI terbaru. Ini menghindari penggunaan Amazon
-Linux 2 yang end of support pada 2026-06-30.
+EC2 container instances memakai ECS-optimized Amazon Linux 2023 AMI yang dipin
+melalui input `ecs_ami_id`. Nilai kandidat diperoleh dari AWS-managed SSM
+parameter `/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended`, lalu
+diubah hanya melalui source change yang direview. Pinning mencegah alias
+`recommended` berubah di antara saved plan, apply, dan verifikasi drift.
 
 Task definition memakai `bridge` network mode dengan dynamic host port mapping.
 Karena itu ECS service yang mendaftarkan target `instance:dynamic-port` ke ALB,

@@ -24,9 +24,10 @@ implemented evidence in BAB 4.
   managed security headers response policy.
 - ECS writable root filesystem: the app container declares
   `readonlyRootFilesystem=true` with `/tmp` tmpfs.
-- ECS container instance OS lifecycle: launch template now resolves the
-  AWS-managed ECS-optimized Amazon Linux 2023 AMI from SSM Parameter Store,
-  avoiding new Amazon Linux 2 instances after its 2026-06-30 end of support.
+- ECS container instance OS lifecycle: launch template uses a reviewed, pinned
+  ECS-optimized Amazon Linux 2023 AMI sourced from the AWS-managed SSM catalog.
+  Pinning avoids non-repeatable drift while keeping Amazon Linux 2 out of new
+  deployments after its 2026-06-30 end of support.
 - Next.js image optimizer runtime cache risk: disabled through
   `images.unoptimized=true` because public media is served by CloudFront.
 - CloudWatch retention shorter than one year: ECS, VPC Flow Logs, WAF, DNS

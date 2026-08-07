@@ -40,6 +40,16 @@ variable "ecr_image" {
 }
 
 # ==================== EC2 Auto Scaling Configuration ====================
+variable "ecs_ami_id" {
+  description = "Pinned ECS-optimized Amazon Linux 2023 AMI ID"
+  type        = string
+
+  validation {
+    condition     = can(regex("^ami-[0-9a-f]{17}$", var.ecs_ami_id))
+    error_message = "ecs_ami_id must be a valid long-format AMI ID."
+  }
+}
+
 variable "ecs_instance_type" {
   description = "EC2 instance type for ECS"
   type        = string

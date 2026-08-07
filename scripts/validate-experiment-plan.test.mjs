@@ -178,8 +178,18 @@ test("assigns autoscaling ownership and credentials for the full runtime suite",
   assert.match(syncWorkflow, /name: Install temporary session bootstrap/);
   assert.match(syncWorkflow, /name: Refresh credentials with session bootstrap/);
   assert.match(syncWorkflow, /unset-current-credentials:\s*true/);
-  assert.match(syncWorkflow, /name: Restore temporary session bootstrap\n\s*if: always\(\)/);
+  assert.match(syncWorkflow, /name: Restore temporary session bootstrap\r?\n\s*if: always\(\)/);
   assert.match(syncWorkflow, /sessionBootstrapRetained:false/);
+});
+
+test("pins the ECS-optimized AL2023 AMI for repeatable campaign inputs", () => {
+  const asg = fs.readFileSync(path.resolve("../..", "modules/ecs/asg.tf"), "utf8");
+  const variables = fs.readFileSync(path.resolve("../..", "env/dev/variables.tf"), "utf8");
+  const root = fs.readFileSync(path.resolve("../..", "env/dev/main.tf"), "utf8");
+  assert.doesNotMatch(asg, /aws_ssm_parameter/);
+  assert.match(asg, /image_id\s*=\s*var\.ecs_ami_id/);
+  assert.match(variables, /variable "ecs_ami_id"[\s\S]*default\s*=\s*"ami-[0-9a-f]{17}"/);
+  assert.match(root, /ecs_ami_id\s*=\s*var\.ecs_ami_id/);
 });
 
 test("uses the WAF resource name for WebACL and visibility names for Rule dimensions", () => {

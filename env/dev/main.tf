@@ -152,6 +152,7 @@ module "ecs" {
   ecr_image = var.app_image_uri
 
   # EC2 Auto Scaling configuration
+  ecs_ami_id            = var.ecs_ami_id
   ecs_instance_type     = var.ecs_instance_type
   asg_min_size          = var.ecs_instance_min_size
   asg_max_size          = var.ecs_instance_max_size
