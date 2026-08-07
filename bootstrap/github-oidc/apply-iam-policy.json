@@ -30,12 +30,6 @@
       "Resource": "arn:aws:iam::557947229844:role/eepistore-*"
     },
     {
-      "Sid": "UpdateExperimentRoleSessionDuration",
-      "Effect": "Allow",
-      "Action": "iam:UpdateRole",
-      "Resource": "arn:aws:iam::557947229844:role/eepistore-infra-experiment-role"
-    },
-    {
       "Sid": "ManageEepistoreInstanceProfiles",
       "Effect": "Allow",
       "Action": [

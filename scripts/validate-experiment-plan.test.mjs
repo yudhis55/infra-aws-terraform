@@ -163,17 +163,20 @@ test("assigns autoscaling ownership and credentials for the full runtime suite",
   assert.match(syncWorkflow, /MAX_SESSION_DURATION:\s*"21600"/);
   assert.match(syncWorkflow, /--max-session-duration\s+"\$MAX_SESSION_DURATION"/);
 
-  const applyPolicy = JSON.parse(
-    fs.readFileSync(path.resolve("../..", "bootstrap/github-oidc/apply-iam-policy.json"), "utf8"),
+  const sessionBootstrapPolicy = JSON.parse(
+    fs.readFileSync(
+      path.resolve("../..", "bootstrap/github-oidc/experiment-session-bootstrap-policy.json"),
+      "utf8",
+    ),
   );
-  const durationStatement = applyPolicy.Statement.find(
-    ({ Sid }) => Sid === "UpdateExperimentRoleSessionDuration",
-  );
+  const [durationStatement] = sessionBootstrapPolicy.Statement;
   assert.equal(durationStatement.Action, "iam:UpdateRole");
   assert.equal(
     durationStatement.Resource,
     "arn:aws:iam::557947229844:role/eepistore-infra-experiment-role",
   );
+  assert.match(syncWorkflow, /restore_session_bootstrap/);
+  assert.match(syncWorkflow, /sessionBootstrapRetained:false/);
 });
 
 test("uses the WAF resource name for WebACL and visibility names for Rule dimensions", () => {
