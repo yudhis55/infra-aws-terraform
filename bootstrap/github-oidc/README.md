@@ -69,8 +69,10 @@ menjadi 21.600 detik. Runtime suite meminta durasi yang sama agar kredensial OID
 tetap berlaku selama timeout job 330 menit tanpa memperluas permission role.
 Saat sinkronisasi, workflow memasang policy bootstrap sementara yang memberi
 `iam:UpdateRole` hanya pada `eepistore-infra-experiment-role`. Policy sementara
-tersebut dihapus kembali setelah sukses dan dipulihkan ke kondisi awal saat
-rollback, sehingga izin itu tidak menjadi permission berdiri pada apply role.
+baru berlaku setelah workflow memperoleh sesi STS apply role yang baru. Policy
+tersebut selalu dihapus kembali atau dipulihkan ke kondisi awal, termasuk saat
+sinkronisasi gagal, sehingga izin itu tidak menjadi permission permanen pada
+apply role.
 
 Verifikasi provenance image hanya diberi akses baca `DescribeRepositories` dan
 `DescribeImages` pada repository `eepistore-repo`. Izin pertama memperoleh URI
