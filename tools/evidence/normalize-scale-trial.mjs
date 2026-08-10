@@ -24,12 +24,16 @@ export function normalizeScaleTrial(summary, timeline, metadata) {
     (best, sample, index) => (sample.ecs?.desired > (samples[best]?.ecs?.desired ?? -1) ? index : best),
     0,
   );
+  const peakDesired = Math.max(...samples.map((sample) => sample.ecs?.desired ?? -1));
+  const peakRunning = Math.max(...samples.map((sample) => sample.ecs?.running ?? -1));
+  const loadEndedAt = Date.parse(metadata.loadEndedAt);
   const scaleIn = samples
     .slice(peakIndex + 1)
     .find(
       (sample) =>
-        sample.ecs?.desired <= baselineDesired &&
-        sample.ecs?.running <= baselineRunning &&
+        Date.parse(sample.timestamp) >= loadEndedAt &&
+        sample.ecs?.desired < peakDesired &&
+        sample.ecs?.running < peakRunning &&
         sample.ecs?.pending === 0,
     );
   const asgScale = samples.find((sample) => sample.asg?.inService > baselineAsg);
