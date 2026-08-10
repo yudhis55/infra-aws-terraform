@@ -30,7 +30,7 @@ jq -n --arg script "$script_payload" --arg profile "$profile_payload" '{commands
   "export APP_URL=$(jq -r .targetUrl /tmp/eepistore-profile.json); export EXPERIMENT_ID=$(jq -r .campaignId /tmp/eepistore-profile.json); export TRIAL_ID=$(jq -r .trialId /tmp/eepistore-profile.json); export BASELINE_VUS=$(jq -r .stages[0].targetVus /tmp/eepistore-profile.json); export STEP_1_VUS=$(jq -r .stages[2].targetVus /tmp/eepistore-profile.json); export STEP_2_VUS=$(jq -r .stages[3].targetVus /tmp/eepistore-profile.json); export STEP_3_VUS=$(jq -r .stages[4].targetVus /tmp/eepistore-profile.json); export WARMUP_DURATION=$(jq -r '\''.stages[0].durationSeconds|tostring+\"s\"'\'' /tmp/eepistore-profile.json); export BASELINE_DURATION=$(jq -r '\''.stages[1].durationSeconds|tostring+\"s\"'\'' /tmp/eepistore-profile.json); export STEP_1_DURATION=$(jq -r '\''.stages[2].durationSeconds|tostring+\"s\"'\'' /tmp/eepistore-profile.json); export STEP_2_DURATION=$(jq -r '\''.stages[3].durationSeconds|tostring+\"s\"'\'' /tmp/eepistore-profile.json); export STEP_3_DURATION=$(jq -r '\''.stages[4].durationSeconds|tostring+\"s\"'\'' /tmp/eepistore-profile.json); export RECOVERY_DURATION=$(jq -r '\''.stages[5].durationSeconds|tostring+\"s\"'\'' /tmp/eepistore-profile.json)",
   "docker pull grafana/k6@sha256:e7eeddf1ce2361df6920d925297f487c0ba549c44be242c6a9c22f28d9b08efa >/dev/null",
   "if ! docker run --rm -e APP_URL -e EXPERIMENT_ID -e TRIAL_ID -e BASELINE_VUS -e STEP_1_VUS -e STEP_2_VUS -e STEP_3_VUS -e WARMUP_DURATION -e BASELINE_DURATION -e STEP_1_DURATION -e STEP_2_DURATION -e STEP_3_DURATION -e RECOVERY_DURATION -v /tmp:/scripts grafana/k6@sha256:e7eeddf1ce2361df6920d925297f487c0ba549c44be242c6a9c22f28d9b08efa run --summary-export /scripts/eepistore-k6-summary.json /scripts/eepistore-load.js > /tmp/eepistore-k6.log 2>&1; then tail -c 12000 /tmp/eepistore-k6.log >&2; exit 1; fi",
-  "printf K6_SUMMARY_BASE64=; base64 -w0 /tmp/eepistore-k6-summary.json; printf \\n"
+  "printf K6_SUMMARY_BASE64=; base64 -w0 /tmp/eepistore-k6-summary.json; printf :END"
 ]}' > "$out_dir/commands.json"
 
 command_id="$(aws ssm send-command \
@@ -48,5 +48,9 @@ done
 aws ssm get-command-invocation --command-id "$command_id" --instance-id "$instance_id" > "$out_dir/invocation.json"
 jq -e '.Status == "Success"' "$out_dir/invocation.json" > /dev/null
 jq -r '.StandardOutputContent' "$out_dir/invocation.json" > "$out_dir/agent.log"
-grep '^K6_SUMMARY_BASE64=' "$out_dir/agent.log" | tail -1 | cut -d= -f2- | base64 -d > "$out_dir/summary.json"
+summary_frame="$(grep -o 'K6_SUMMARY_BASE64=[A-Za-z0-9+/=]*:END' "$out_dir/agent.log" | tail -1)"
+[ -n "$summary_frame" ] || { echo "framed k6 summary was not returned by SSM" >&2; exit 1; }
+summary_payload="${summary_frame#K6_SUMMARY_BASE64=}"
+summary_payload="${summary_payload%:END}"
+printf '%s' "$summary_payload" | base64 -d > "$out_dir/summary.json"
 jq -e '.metrics.http_req_failed != null and .metrics.http_req_duration != null' "$out_dir/summary.json" > /dev/null
