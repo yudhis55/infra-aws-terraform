@@ -62,25 +62,38 @@ assert_json() {
 verify_json_endpoint() {
   local name="$1"
   local url="$2"
+  local attempts="${3:-1}"
+  local delay_seconds="${4:-0}"
   local status
+  local attempt
+  local failure_reason="request was not attempted"
 
-  if ! status="$(curl --silent --show-error --max-time 30 --output "$OUT_DIR/${name}.json" --write-out "%{http_code}" "$url" 2> "$OUT_DIR/${name}.err")"; then
-    log_status "FAIL runtime-${name}: curl failed"
-    return 1
-  fi
+  for attempt in $(seq 1 "$attempts"); do
+    if status="$(curl --silent --show-error --max-time 30 --output "$OUT_DIR/${name}.json" --write-out "%{http_code}" "$url" 2> "$OUT_DIR/${name}.err")"; then
+      if [ "$status" = "200" ] && jq -e '.status == "ok"' "$OUT_DIR/${name}.json" > /dev/null 2> "$OUT_DIR/${name}.err"; then
+        jq -n --argjson attempts "$attempt" --arg status "$status" \
+          '{status:"passed",attempts:$attempts,httpStatus:$status}' \
+          > "$OUT_DIR/${name}-attempts.json"
+        log_status "PASS runtime-${name}: ready after ${attempt} attempt(s)"
+        return 0
+      fi
+      if [ "$status" != "200" ]; then
+        failure_reason="HTTP $status"
+      else
+        failure_reason="response is not JSON status=ok"
+      fi
+    else
+      failure_reason="curl failed"
+    fi
+    if [ "$attempt" -lt "$attempts" ]; then sleep "$delay_seconds"; fi
+  done
 
-  if [ "$status" != "200" ]; then
-    echo "Expected HTTP 200, got $status" > "$OUT_DIR/${name}.err"
-    log_status "FAIL runtime-${name}: HTTP $status"
-    return 1
-  fi
-
-  if jq -e '.status == "ok"' "$OUT_DIR/${name}.json" > /dev/null 2> "$OUT_DIR/${name}.err"; then
-    log_status "PASS runtime-${name}"
-  else
-    log_status "FAIL runtime-${name}: response is not JSON status=ok"
-    return 1
-  fi
+  jq -n --argjson attempts "$attempts" --arg reason "$failure_reason" \
+    '{status:"failed",attempts:$attempts,reason:$reason}' \
+    > "$OUT_DIR/${name}-attempts.json"
+  echo "$failure_reason after $attempts attempt(s)" > "$OUT_DIR/${name}.err"
+  log_status "FAIL runtime-${name}: $failure_reason after $attempts attempt(s)"
+  return 1
 }
 
 read_output() {
@@ -302,7 +315,7 @@ fi
 
 if [ -n "$application_url" ]; then
   verify_json_endpoint "health" "$application_url/api/health"
-  verify_json_endpoint "readiness" "$application_url/api/readiness"
+  verify_json_endpoint "readiness" "$application_url/api/readiness" 12 15
   experiment_status="$(curl --silent --show-error --max-time 30 --output "$OUT_DIR/experiment-endpoint-deny.json" --write-out "%{http_code}" "$application_url/api/experiment/rate-limit" || true)"
   if [ "$experiment_status" = "403" ]; then
     log_status "PASS runtime-experiment-endpoint-default-deny"
