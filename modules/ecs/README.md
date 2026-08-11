@@ -54,3 +54,10 @@ ECS service memakai target tracking CPU, memori, dan
 `ALBRequestCountPerTarget`. Target request default 300 request per target per
 menit memberi sinyal scale-out yang dapat diukur melalui trafik aplikasi nyata,
 tanpa endpoint pembakar CPU khusus eksperimen.
+
+Ketiga policy target tracking memakai scale-out cooldown 60 detik dan satu input
+scale-in cooldown yang sama, dengan default 60 detik. Nilai eksplisit ini
+menghindari perbedaan perilaku antara default provider dan policy request. AWS
+tetap menerapkan evaluasi alarm target tracking yang konservatif sebelum
+scale-in; cooldown hanya mengatur jeda sesudah aktivitas scaling dan tidak
+menurunkan threshold CPU, memori, atau request untuk memaksa grafik eksperimen.
