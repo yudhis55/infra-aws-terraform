@@ -182,6 +182,29 @@ test("assigns autoscaling ownership and credentials for the full runtime suite",
   assert.match(syncWorkflow, /sessionBootstrapRetained:false/);
 });
 
+test("collects scaling evidence for the full load and scale-in threshold window", () => {
+  const runtimeWorkflow = fs.readFileSync(
+    path.resolve("../..", ".github/workflows/research-campaign.yml"),
+    "utf8",
+  );
+  const collector = fs.readFileSync(
+    path.resolve("../..", "scripts/collect-scaling-timeline.sh"),
+    "utf8",
+  );
+  assert.match(runtimeWorkflow, /load_duration_seconds=.*stages\[\]\.durationSeconds/);
+  assert.match(runtimeWorkflow, /scale_in_window_seconds=.*scaleInSecondsMax/);
+  assert.match(
+    runtimeWorkflow,
+    /collection_duration_seconds="\$\(\(load_duration_seconds \+ scale_in_window_seconds \+ 120\)\)"/,
+  );
+  assert.match(
+    runtimeWorkflow,
+    /collect-scaling-timeline\.sh "\$TF_WORKING_DIR" "\$collection_duration_seconds"/,
+  );
+  assert.match(collector, /duration_seconds="\$\{2:-2880\}"/);
+  assert.match(collector, /-gt 3600/);
+});
+
 test("pins the ECS-optimized AL2023 AMI for repeatable campaign inputs", () => {
   const asg = fs.readFileSync(path.resolve("../..", "modules/ecs/asg.tf"), "utf8");
   const variables = fs.readFileSync(path.resolve("../..", "env/dev/variables.tf"), "utf8");

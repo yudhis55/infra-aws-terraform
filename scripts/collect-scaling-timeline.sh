@@ -2,12 +2,12 @@
 set -euo pipefail
 
 tf_dir="${1:-env/dev}"
-duration_seconds="${2:-2700}"
+duration_seconds="${2:-2880}"
 out_file="${3:-experiment-evidence/runtime/scaling-events.json}"
 interval_seconds="${4:-60}"
 
-if ! [[ "$duration_seconds" =~ ^[0-9]+$ ]] || [ "$duration_seconds" -lt 60 ] || [ "$duration_seconds" -gt 2700 ]; then
-  echo "duration must be between 60 and 2700 seconds" >&2
+if ! [[ "$duration_seconds" =~ ^[0-9]+$ ]] || [ "$duration_seconds" -lt 60 ] || [ "$duration_seconds" -gt 3600 ]; then
+  echo "duration must be between 60 and 3600 seconds" >&2
   exit 2
 fi
 if [ "$interval_seconds" != "60" ]; then
