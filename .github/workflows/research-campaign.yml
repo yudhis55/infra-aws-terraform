@@ -270,7 +270,7 @@ jobs:
   runtime-suite:
     if: inputs.mode == 'runtime-suite'
     runs-on: ubuntu-latest
-    timeout-minutes: 330
+    timeout-minutes: 360
     environment: production
     permissions:
       actions: write
@@ -425,9 +425,21 @@ jobs:
           load_duration_seconds="$(jq '[.stages[].durationSeconds] | add' experiments/profiles/final-load-profile.json)"
           scale_in_window_seconds="$(jq '.thresholds.scaleInSecondsMax' experiments/profiles/final-load-profile.json)"
           collection_duration_seconds="$((load_duration_seconds + scale_in_window_seconds + 120))"
+          cooldown_seconds="$(jq '.cooldownSeconds' experiments/profiles/final-load-profile.json)"
+          baseline_ecs_desired=""
+          baseline_asg_in_service=""
           for trial in calibration 1 2 3; do
             run_type=final-trial
             if [ "$trial" = calibration ]; then run_type=calibration; fi
+            if [ "$trial" != calibration ]; then
+              bash scripts/wait-for-scaling-baseline.sh \
+                "$TF_WORKING_DIR" \
+                "$baseline_ecs_desired" \
+                "$baseline_asg_in_service" \
+                "$cooldown_seconds" \
+                2400 \
+                "campaign-evidence/runtime/baseline-$trial.json"
+            fi
             jq --arg campaignId "${{ inputs.campaign_id }}" --arg trialId "$trial" --arg runType "$run_type" '. + {campaignId:$campaignId,trialId:$trialId,runType:$runType}' experiments/profiles/final-load-profile.json > "campaign-evidence/runtime/profile-$trial.json"
             load_started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             bash scripts/collect-scaling-timeline.sh "$TF_WORKING_DIR" "$collection_duration_seconds" "campaign-evidence/runtime/scaling-$trial.json" 60 &
@@ -440,16 +452,21 @@ jobs:
             load_ended="$(jq -r .ExecutionEndDateTime campaign-evidence/runtime/agent-$trial/invocation.json)"
             ended_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             threshold_at="$(date -u -d "$load_started +5 minutes" +%Y-%m-%dT%H:%M:%SZ)"
-            jq -n --arg trialId "$trial" --arg runType "$run_type" --arg profileDigest "$profile_digest" --arg loadStartedAt "$load_started" --arg thresholdLoadStartedAt "$threshold_at" --arg loadEndedAt "$load_ended" --arg collectionEndedAt "$ended_at" '{trialId:$trialId,runType:$runType,profileDigest:$profileDigest,loadStartedAt:$loadStartedAt,thresholdLoadStartedAt:$thresholdLoadStartedAt,loadEndedAt:$loadEndedAt,collectionEndedAt:$collectionEndedAt}' > "campaign-evidence/runtime/metadata-$trial.json"
+            jq -n --arg trialId "$trial" --arg runType "$run_type" --arg profileDigest "$profile_digest" --arg loadStartedAt "$load_started" --arg thresholdLoadStartedAt "$threshold_at" --arg loadEndedAt "$load_ended" --arg collectionEndedAt "$ended_at" --argjson loadGeneratorExitCode "$run_code" '{trialId:$trialId,runType:$runType,profileDigest:$profileDigest,loadStartedAt:$loadStartedAt,thresholdLoadStartedAt:$thresholdLoadStartedAt,loadEndedAt:$loadEndedAt,collectionEndedAt:$collectionEndedAt,loadGeneratorExitCode:$loadGeneratorExitCode}' > "campaign-evidence/runtime/metadata-$trial.json"
             node tools/evidence/normalize-scale-trial.mjs "campaign-evidence/runtime/agent-$trial/summary.json" "campaign-evidence/runtime/scaling-$trial.json" "campaign-evidence/runtime/metadata-$trial.json" "campaign-evidence/runtime/normalized-$trial.json"
-            jq -e '.runStatus == "passed"' "campaign-evidence/runtime/normalized-$trial.json" > /dev/null
-            test "$run_code" -eq 0
-            if [ "$trial" != 3 ]; then sleep 600; fi
+            jq -e '.requests > 0 and (.runStatus == "passed" or .runStatus == "failed")' "campaign-evidence/runtime/normalized-$trial.json" > /dev/null
+            if [ "$trial" = calibration ]; then
+              baseline_ecs_desired="$(jq -r '.samples[0].ecs.desired' campaign-evidence/runtime/scaling-calibration.json)"
+              baseline_asg_in_service="$(jq -r '.samples[0].asg.inService' campaign-evidence/runtime/scaling-calibration.json)"
+              test "$baseline_ecs_desired" -ge 1
+              test "$baseline_asg_in_service" -ge 1
+            fi
           done
           cp campaign-evidence/runtime/normalized-1.json campaign-evidence/runtime/scale-trial-1.json
           cp campaign-evidence/runtime/normalized-2.json campaign-evidence/runtime/scale-trial-2.json
           cp campaign-evidence/runtime/normalized-3.json campaign-evidence/runtime/scale-trial-3.json
           jq -s '{asgStatus:(map(.asgStatus) | if any(. == "failed") then "failed" elif any(. == "observed-passed") then "observed-passed" else "not-exercised" end),asgActivities:[]}' campaign-evidence/runtime/scale-trial-{1,2,3}.json > campaign-evidence/runtime/scaling-events.json
+          jq -s '{status:(if all(.runStatus == "passed") then "passed" else "threshold-failed" end),trials:map({trialId,runStatus,loadGeneratorExitCode,requests,p95Ms,failureRate,checksRate,ecsServiceScaleOut,scaleInLatencySeconds})}' campaign-evidence/runtime/scale-trial-{1,2,3}.json > campaign-evidence/runtime/trial-outcomes.json
       - name: Collect CloudWatch and AWS runtime evidence
         shell: bash
         run: |

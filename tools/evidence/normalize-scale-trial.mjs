@@ -53,6 +53,7 @@ export function normalizeScaleTrial(summary, timeline, metadata) {
     runStatus: thresholdsPassed ? "passed" : "failed",
     trialId: String(metadata.trialId),
     profileDigest: metadata.profileDigest,
+    loadGeneratorExitCode: metadata.loadGeneratorExitCode ?? 0,
     startedAt: metadata.loadStartedAt,
     endedAt: metadata.collectionEndedAt,
     requests: values(summary.metrics?.http_reqs).count ?? null,

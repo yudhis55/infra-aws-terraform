@@ -238,8 +238,22 @@ test("collects scaling evidence for the full load and scale-in threshold window"
     runtimeWorkflow,
     /collect-scaling-timeline\.sh "\$TF_WORKING_DIR" "\$collection_duration_seconds"/,
   );
+  assert.match(runtimeWorkflow, /wait-for-scaling-baseline\.sh/);
+  assert.match(runtimeWorkflow, /campaign-evidence\/runtime\/baseline-\$trial\.json/);
+  assert.doesNotMatch(runtimeWorkflow, /jq -e '\.runStatus == "passed"'/);
+  assert.doesNotMatch(runtimeWorkflow, /test "\$run_code" -eq 0/);
+  assert.match(runtimeWorkflow, /trial-outcomes\.json/);
   assert.match(collector, /duration_seconds="\$\{2:-2880\}"/);
   assert.match(collector, /-gt 3600/);
+});
+
+test("archives complete campaign evidence even when a research threshold is missed", () => {
+  const workflow = fs.readFileSync(
+    path.resolve("../..", ".github/workflows/aggregate-campaign.yml"),
+    "utf8",
+  );
+  assert.match(workflow, /ALLOW_INCOMPLETE_EVIDENCE: "true"/);
+  assert.match(workflow, /\.status == "final" or \.status == "failed"/);
 });
 
 test("pins the ECS-optimized AL2023 AMI for repeatable campaign inputs", () => {
