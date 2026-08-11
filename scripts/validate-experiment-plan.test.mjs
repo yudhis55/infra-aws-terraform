@@ -148,6 +148,41 @@ test("isolates manual Terraform operations from branch CI concurrency", () => {
   assert.match(workflow, /cancel-in-progress: \$\{\{ github\.event_name != 'workflow_dispatch' \}\}/);
 });
 
+test("uses a long apply session and tightly gates stale-lock recovery", () => {
+  const terraformWorkflow = fs.readFileSync(
+    path.resolve("../..", ".github/workflows/terraform-ci.yml"),
+    "utf8",
+  );
+  const recoveryWorkflow = fs.readFileSync(
+    path.resolve("../..", ".github/workflows/recover-stale-backend-lock.yml"),
+    "utf8",
+  );
+  const bootstrapPolicy = JSON.parse(
+    fs.readFileSync(
+      path.resolve("../..", "bootstrap/github-oidc/apply-session-bootstrap-policy.json"),
+      "utf8",
+    ),
+  );
+  assert.match(
+    terraformWorkflow,
+    /role-to-assume: \$\{\{ secrets\.AWS_APPLY_ROLE_ARN \}\}[\s\S]*role-duration-seconds: 21600/,
+  );
+  assert.match(recoveryWorkflow, /inputs\.confirmation == 'RECOVER-STALE-LOCK'/);
+  assert.match(recoveryWorkflow, /select\(\.status != "completed"\).*length == 0/);
+  assert.match(recoveryWorkflow, /test "\$\(\(now_epoch - lock_epoch\)\)" -ge 300/);
+  assert.match(recoveryWorkflow, /delete-object --bucket "\$BACKEND_BUCKET" --key "\$LOCK_KEY"/);
+  assert.match(
+    recoveryWorkflow,
+    /name: Remove temporary apply-session bootstrap\r?\n\s*if: always\(\)/,
+  );
+  assert.equal(bootstrapPolicy.Statement.length, 1);
+  assert.equal(bootstrapPolicy.Statement[0].Action, "iam:UpdateRole");
+  assert.equal(
+    bootstrapPolicy.Statement[0].Resource,
+    "arn:aws:iam::557947229844:role/eepistore-infra-apply-role",
+  );
+});
+
 test("assigns autoscaling ownership and credentials for the full runtime suite", () => {
   const ecs = fs.readFileSync(path.resolve("../..", "modules/ecs/main.tf"), "utf8");
   const runtimeWorkflow = fs.readFileSync(

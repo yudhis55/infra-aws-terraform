@@ -1,0 +1,131 @@
+name: Recover Stale Terraform Backend Lock
+
+on:
+  workflow_dispatch:
+    inputs:
+      failed_run_id:
+        description: Completed failed Terraform CI run that left the lock
+        required: true
+        type: string
+      confirmation:
+        description: Type RECOVER-STALE-LOCK to continue
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-backend-lock-recovery
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    if: inputs.confirmation == 'RECOVER-STALE-LOCK'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ap-southeast-3
+      BACKEND_BUCKET: eepistore-dev-terraform-state
+      LOCK_KEY: eepistore/dev/terraform.tfstate.tflock
+      APPLY_ROLE_NAME: eepistore-infra-apply-role
+      SESSION_POLICY_NAME: eepistore-apply-session-bootstrap
+      MAX_SESSION_DURATION: "21600"
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ secrets.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Prove the lock is stale
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${{ inputs.failed_run_id }}" =~ ^[0-9]+$ ]]
+          mkdir -p recovery-evidence
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${{ inputs.failed_run_id }}" > recovery-evidence/failed-run.json
+          jq -e '.status == "completed" and .conclusion == "failure" and .path == ".github/workflows/terraform-ci.yml"' recovery-evidence/failed-run.json > /dev/null
+
+          gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/terraform-ci.yml/runs?per_page=100" > recovery-evidence/terraform-runs.json
+          jq -e '[.workflow_runs[] | select(.status != "completed")] | length == 0' recovery-evidence/terraform-runs.json > /dev/null
+
+          aws s3api get-object --bucket "$BACKEND_BUCKET" --key "$LOCK_KEY" recovery-evidence/lock.json > recovery-evidence/lock-object.json
+          jq -e '.ID and .Operation and .Who and .Created' recovery-evidence/lock.json > /dev/null
+          lock_epoch="$(date -u -d "$(jq -r .Created recovery-evidence/lock.json)" +%s)"
+          run_created_epoch="$(date -u -d "$(jq -r .created_at recovery-evidence/failed-run.json)" +%s)"
+          run_updated_epoch="$(date -u -d "$(jq -r .updated_at recovery-evidence/failed-run.json)" +%s)"
+          now_epoch="$(date -u +%s)"
+          test "$lock_epoch" -ge "$run_created_epoch"
+          test "$lock_epoch" -le "$run_updated_epoch"
+          test "$((now_epoch - lock_epoch))" -ge 300
+          aws s3api head-object --bucket "$BACKEND_BUCKET" --key "eepistore/dev/terraform.tfstate" > recovery-evidence/state-head-before.json
+          sha256sum recovery-evidence/lock.json > recovery-evidence/lock.sha256
+      - name: Remove only the proven stale lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws s3api delete-object --bucket "$BACKEND_BUCKET" --key "$LOCK_KEY" > recovery-evidence/delete-lock.json
+          if aws s3api head-object --bucket "$BACKEND_BUCKET" --key "$LOCK_KEY" 2>recovery-evidence/lock-after.err; then
+            echo "Lock object still exists" >&2
+            exit 1
+          fi
+      - name: Install temporary apply-session bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws iam get-role --role-name "$APPLY_ROLE_NAME" > recovery-evidence/apply-role-before.json
+          aws accessanalyzer validate-policy \
+            --policy-document file://bootstrap/github-oidc/apply-session-bootstrap-policy.json \
+            --policy-type IDENTITY_POLICY \
+            > recovery-evidence/session-policy-validation.json
+          jq -e '[.findings[] | select(.findingType != "SUGGESTION")] | length == 0' recovery-evidence/session-policy-validation.json > /dev/null
+          aws iam put-role-policy \
+            --role-name "$APPLY_ROLE_NAME" \
+            --policy-name "$SESSION_POLICY_NAME" \
+            --policy-document file://bootstrap/github-oidc/apply-session-bootstrap-policy.json
+      - name: Extend apply-role maximum session duration
+        shell: bash
+        run: |
+          set -euo pipefail
+          updated=false
+          for _ in $(seq 1 10); do
+            if aws iam update-role --role-name "$APPLY_ROLE_NAME" --max-session-duration "$MAX_SESSION_DURATION"; then
+              updated=true
+              break
+            fi
+            sleep 5
+          done
+          test "$updated" = true
+          aws iam get-role --role-name "$APPLY_ROLE_NAME" > recovery-evidence/apply-role-after.json
+          test "$(jq -r '.Role.MaxSessionDuration' recovery-evidence/apply-role-after.json)" = "$MAX_SESSION_DURATION"
+      - name: Remove temporary apply-session bootstrap
+        if: always()
+        shell: bash
+        run: |
+          aws iam delete-role-policy --role-name "$APPLY_ROLE_NAME" --policy-name "$SESSION_POLICY_NAME" || true
+          if aws iam get-role-policy --role-name "$APPLY_ROLE_NAME" --policy-name "$SESSION_POLICY_NAME" > recovery-evidence/session-policy-retained.json 2>&1; then
+            echo "Temporary session policy was retained" >&2
+            exit 1
+          fi
+          jq -n \
+            --arg failedRunId "${{ inputs.failed_run_id }}" \
+            --arg lockKey "$LOCK_KEY" \
+            --arg maxSessionDuration "$MAX_SESSION_DURATION" \
+            '{status:"passed",failedRunId:$failedRunId,lockKey:$lockKey,lockRemoved:true,maxSessionDurationSeconds:($maxSessionDuration|tonumber),temporaryPolicyRetained:false}' \
+            > recovery-evidence/result.json
+      - name: Upload recovery evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: stale-lock-recovery-${{ github.run_id }}
+          path: recovery-evidence
+          if-no-files-found: error
+          retention-days: 90

@@ -1,0 +1,11 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ExtendOnlyTheApplyRoleSessionDuration",
+      "Effect": "Allow",
+      "Action": "iam:UpdateRole",
+      "Resource": "arn:aws:iam::557947229844:role/eepistore-infra-apply-role"
+    }
+  ]
+}
