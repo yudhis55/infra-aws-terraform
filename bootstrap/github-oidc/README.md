@@ -83,3 +83,12 @@ Perubahan akses backend plan role dijalankan melalui
 `sync-backend-oidc-policy.yml`. Workflow tersebut memvalidasi dua prefix state
 yang diizinkan, memakai approval environment `production`, membandingkan policy
 aktual dengan source, dan memulihkan policy sebelumnya bila sinkronisasi gagal.
+
+Apply role juga memakai maximum session duration 21.600 detik karena controlled
+destroy dapat menunggu lifecycle ECS, CloudFront, dan RDS lebih dari satu jam.
+Jika sesi lama kedaluwarsa dan meninggalkan lock S3, jalankan workflow
+`Recover Stale Terraform Backend Lock` dengan run Terraform gagal yang tepat.
+Workflow tersebut hanya menghapus key lock exact setelah run asal terbukti
+selesai gagal, tidak ada Terraform run aktif, lock berada di dalam rentang waktu
+run tersebut, dan umurnya lebih dari lima menit. Policy `iam:UpdateRole`
+sementara dibatasi ke apply role itu sendiri dan selalu dihapus kembali.
