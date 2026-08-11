@@ -107,6 +107,10 @@ Jalankan hanya setelah baseline source, schema, IAM, dan plan lulus.
    test, dan runtime suite.
 6. Runtime suite menjalankan fixture, Playwright, bounded ZAP, network isolation,
    calibration, tiga final k6 trials, CloudWatch collection, dan cleanup data.
+   Setiap final trial menunggu ECS dan ASG kembali ke baseline kalibrasi setelah
+   cooldown minimum. Kegagalan memenuhi threshold dicatat sebagai hasil
+   eksperimen dan tidak menghentikan pengumpulan trial berikutnya; kegagalan
+   teknis atau baseline yang tidak konvergen tetap menghentikan run.
 7. Terapkan `experiment-cleanup` melalui saved plan, lalu destroy Cycle F hanya
    setelah semua artifact wajib lengkap.
 8. Jalankan `Aggregate Research Campaign Evidence` dengan tepat 18 run ID,

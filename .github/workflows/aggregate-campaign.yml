@@ -252,8 +252,13 @@ jobs:
             '{status:(if ($differences|length)==0 then "passed" else "failed" end),semanticDifferences:$differences,terraformModeRuns:{agent:$agentRunId,rateTest:$rateRunId,performance:$performanceRunId,cleanup:$cleanupRunId},controlledDrift:{status:"passed",injectionRunId:$injectionRunId,recoveryRunId:$recoveryRunId,recoveryPlanUpdates:1,remainingControlledDriftTags:0,noChangeAfterRecovery:true}}' \
             > "$root/conformance/report.json"
       - name: Aggregate, validate, and create the offline archive
+        env:
+          # A preregistered threshold miss is a valid research outcome. Preserve
+          # and archive it with status "failed" instead of losing the evidence.
+          ALLOW_INCOMPLETE_EVIDENCE: "true"
         run: |
           node tools/evidence/aggregate-campaign.mjs experiment-evidence experiment-evidence/experiment-evidence.json
+          jq -e '.status == "final" or .status == "failed"' experiment-evidence/experiment-evidence.json > /dev/null
           node tools/evidence/archive.mjs create experiment-evidence academic-archive
           node tools/evidence/archive.mjs verify academic-archive
       - name: Upload canonical campaign evidence

@@ -55,3 +55,30 @@ test("measures the first completed scale-in from peak after load ends", () => {
   assert.equal(result.ecsServiceScaleOut, "passed");
   assert.equal(result.asgStatus, "observed-passed");
 });
+
+test("preserves a scale-in threshold miss as a completed failed trial", () => {
+  const summary = { metrics: {
+    http_req_duration: { values: { "p(95)": 100 } },
+    http_req_failed: { values: { rate: 0 } },
+    checks: { values: { rate: 1 } },
+    http_reqs: { values: { count: 30000, rate: 20 } },
+  } };
+  const timeline = { samples: [
+    { timestamp: "2026-08-11T00:00:00Z", ecs: { desired: 2, running: 2, pending: 0 }, asg: { inService: 3, pending: 0 } },
+    { timestamp: "2026-08-11T00:10:00Z", ecs: { desired: 6, running: 6, pending: 0 }, asg: { inService: 6, pending: 0 } },
+    { timestamp: "2026-08-11T00:41:01Z", ecs: { desired: 5, running: 5, pending: 0 }, asg: { inService: 6, pending: 0 } },
+  ] };
+  const result = normalizeScaleTrial(summary, timeline, {
+    trialId: 1,
+    profileDigest: `sha256:${"c".repeat(64)}`,
+    loadGeneratorExitCode: 99,
+    loadStartedAt: "2026-08-11T00:00:00Z",
+    thresholdLoadStartedAt: "2026-08-11T00:05:00Z",
+    loadEndedAt: "2026-08-11T00:20:00Z",
+    collectionEndedAt: "2026-08-11T00:43:00Z",
+  });
+  assert.equal(result.runStatus, "failed");
+  assert.equal(result.scaleInLatencySeconds, 1261);
+  assert.equal(result.loadGeneratorExitCode, 99);
+  assert.equal(result.requests, 30000);
+});
