@@ -103,6 +103,17 @@ variable "service_request_count_target" {
   }
 }
 
+variable "service_scale_in_cooldown_seconds" {
+  description = "Cooldown after an ECS service scale-in activity, applied consistently to every target-tracking policy"
+  type        = number
+  default     = 60
+
+  validation {
+    condition     = var.service_scale_in_cooldown_seconds >= 60 && var.service_scale_in_cooldown_seconds <= 600
+    error_message = "service_scale_in_cooldown_seconds must remain between 60 and 600 seconds."
+  }
+}
+
 # ==================== ECS Task Configuration ====================
 variable "ecs_task_cpu" {
   description = "CPU units for ECS task (256 = 0.25vCPU)"

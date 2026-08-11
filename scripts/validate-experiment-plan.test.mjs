@@ -273,3 +273,14 @@ test("uses the WAF resource name for WebACL and visibility names for Rule dimens
   assert.match(collector, /Value:"ExperimentRateLimitMetric"/);
   assert.match(monitoring, /var\.waf_web_acl_name/);
 });
+
+test("all ECS target-tracking policies share an explicit scale-in cooldown", () => {
+  const ecsModule = fs.readFileSync(path.resolve("../..", "modules/ecs/main.tf"), "utf8");
+  const matches =
+    ecsModule.match(/scale_in_cooldown\s+=\s+var\.service_scale_in_cooldown_seconds/g) ?? [];
+
+  assert.equal(matches.length, 3);
+  assert.match(ecsModule, /resource "aws_appautoscaling_policy" "cpu_scaling"/);
+  assert.match(ecsModule, /resource "aws_appautoscaling_policy" "memory_scaling"/);
+  assert.match(ecsModule, /resource "aws_appautoscaling_policy" "request_scaling"/);
+});
