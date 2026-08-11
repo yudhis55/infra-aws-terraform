@@ -422,12 +422,15 @@ jobs:
         run: |
           set -euo pipefail
           profile_digest="sha256:$(sha256sum experiments/profiles/final-load-profile.json | awk '{print $1}')"
+          load_duration_seconds="$(jq '[.stages[].durationSeconds] | add' experiments/profiles/final-load-profile.json)"
+          scale_in_window_seconds="$(jq '.thresholds.scaleInSecondsMax' experiments/profiles/final-load-profile.json)"
+          collection_duration_seconds="$((load_duration_seconds + scale_in_window_seconds + 120))"
           for trial in calibration 1 2 3; do
             run_type=final-trial
             if [ "$trial" = calibration ]; then run_type=calibration; fi
             jq --arg campaignId "${{ inputs.campaign_id }}" --arg trialId "$trial" --arg runType "$run_type" '. + {campaignId:$campaignId,trialId:$trialId,runType:$runType}' experiments/profiles/final-load-profile.json > "campaign-evidence/runtime/profile-$trial.json"
             load_started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            bash scripts/collect-scaling-timeline.sh "$TF_WORKING_DIR" 2700 "campaign-evidence/runtime/scaling-$trial.json" 60 &
+            bash scripts/collect-scaling-timeline.sh "$TF_WORKING_DIR" "$collection_duration_seconds" "campaign-evidence/runtime/scaling-$trial.json" 60 &
             collector_pid=$!
             set +e
             bash scripts/run-k6-on-agent.sh "$INSTANCE_ID" "${{ inputs.campaign_id }}" "campaign-evidence/runtime/profile-$trial.json" app-source/tests/performance/load.js "campaign-evidence/runtime/agent-$trial"
