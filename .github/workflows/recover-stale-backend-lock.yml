@@ -45,7 +45,8 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_APPLY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-      - name: Prove the lock is stale
+      - name: Prove the lock is stale or already absent
+        id: stale
         shell: bash
         run: |
           set -euo pipefail
@@ -57,18 +58,27 @@ jobs:
           gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/terraform-ci.yml/runs?per_page=100" > recovery-evidence/terraform-runs.json
           jq -e '[.workflow_runs[] | select(.status != "completed")] | length == 0' recovery-evidence/terraform-runs.json > /dev/null
 
-          aws s3api get-object --bucket "$BACKEND_BUCKET" --key "$LOCK_KEY" recovery-evidence/lock.json > recovery-evidence/lock-object.json
-          jq -e '.ID and .Operation and .Who and .Created' recovery-evidence/lock.json > /dev/null
-          lock_epoch="$(date -u -d "$(jq -r .Created recovery-evidence/lock.json)" +%s)"
-          run_created_epoch="$(date -u -d "$(jq -r .created_at recovery-evidence/failed-run.json)" +%s)"
-          run_updated_epoch="$(date -u -d "$(jq -r .updated_at recovery-evidence/failed-run.json)" +%s)"
-          now_epoch="$(date -u +%s)"
-          test "$lock_epoch" -ge "$run_created_epoch"
-          test "$lock_epoch" -le "$run_updated_epoch"
-          test "$((now_epoch - lock_epoch))" -ge 300
+          if aws s3api get-object --bucket "$BACKEND_BUCKET" --key "$LOCK_KEY" recovery-evidence/lock.json > recovery-evidence/lock-object.json 2>recovery-evidence/lock-get.err; then
+            jq -e '.ID and .Operation and .Who and .Created' recovery-evidence/lock.json > /dev/null
+            lock_epoch="$(date -u -d "$(jq -r .Created recovery-evidence/lock.json)" +%s)"
+            run_created_epoch="$(date -u -d "$(jq -r .created_at recovery-evidence/failed-run.json)" +%s)"
+            run_updated_epoch="$(date -u -d "$(jq -r .updated_at recovery-evidence/failed-run.json)" +%s)"
+            now_epoch="$(date -u +%s)"
+            test "$lock_epoch" -ge "$run_created_epoch"
+            test "$lock_epoch" -le "$run_updated_epoch"
+            test "$((now_epoch - lock_epoch))" -ge 300
+            sha256sum recovery-evidence/lock.json > recovery-evidence/lock.sha256
+            echo "lock_present=true" >> "$GITHUB_OUTPUT"
+          elif grep -Eq 'NoSuchKey|Not Found|404' recovery-evidence/lock-get.err; then
+            jq -n '{status:"already-absent"}' > recovery-evidence/lock-absence.json
+            echo "lock_present=false" >> "$GITHUB_OUTPUT"
+          else
+            cat recovery-evidence/lock-get.err >&2
+            exit 1
+          fi
           aws s3api head-object --bucket "$BACKEND_BUCKET" --key "eepistore/dev/terraform.tfstate" > recovery-evidence/state-head-before.json
-          sha256sum recovery-evidence/lock.json > recovery-evidence/lock.sha256
       - name: Remove only the proven stale lock
+        if: steps.stale.outputs.lock_present == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -119,7 +129,8 @@ jobs:
             --arg failedRunId "${{ inputs.failed_run_id }}" \
             --arg lockKey "$LOCK_KEY" \
             --arg maxSessionDuration "$MAX_SESSION_DURATION" \
-            '{status:"passed",failedRunId:$failedRunId,lockKey:$lockKey,lockRemoved:true,maxSessionDurationSeconds:($maxSessionDuration|tonumber),temporaryPolicyRetained:false}' \
+            --argjson lockWasPresent "${{ steps.stale.outputs.lock_present == 'true' }}" \
+            '{status:"passed",failedRunId:$failedRunId,lockKey:$lockKey,lockWasPresent:$lockWasPresent,lockAbsentAfterRecovery:true,maxSessionDurationSeconds:($maxSessionDuration|tonumber),temporaryPolicyRetained:false}' \
             > recovery-evidence/result.json
       - name: Upload recovery evidence
         if: always()

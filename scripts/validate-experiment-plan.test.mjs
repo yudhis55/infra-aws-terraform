@@ -170,6 +170,8 @@ test("uses a long apply session and tightly gates stale-lock recovery", () => {
   assert.match(recoveryWorkflow, /inputs\.confirmation == 'RECOVER-STALE-LOCK'/);
   assert.match(recoveryWorkflow, /select\(\.status != "completed"\).*length == 0/);
   assert.match(recoveryWorkflow, /test "\$\(\(now_epoch - lock_epoch\)\)" -ge 300/);
+  assert.match(recoveryWorkflow, /NoSuchKey\|Not Found\|404/);
+  assert.match(recoveryWorkflow, /if: steps\.stale\.outputs\.lock_present == 'true'/);
   assert.match(recoveryWorkflow, /delete-object --bucket "\$BACKEND_BUCKET" --key "\$LOCK_KEY"/);
   assert.match(
     recoveryWorkflow,
