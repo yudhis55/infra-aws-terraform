@@ -6,9 +6,10 @@ sensitif tetap disimpan di GitHub Actions atau media lokal yang di-ignore.
 
 ## Current Infrastructure State
 
-- Research campaign v2 belum menjadi evidence final sampai dua clean cycle dan
-  paket 18 run lulus agregasi canonical.
-- Terraform state workload kosong dibuktikan ulang oleh run `31152404189`,
+- Research campaign v2 berstatus `Valid final`. Dua clean provisioning cycle,
+  paket 18 source run, schema canonical `2.0.0`, dan arsip offline lulus pada
+  aggregation run `31578428362`.
+- Terraform state workload kosong dibuktikan ulang oleh run `31570617948`,
   artifact `post-destroy-verification`, dengan status
   `PASS terraform-state-empty` dan `PASS aws-workload-resources-absent`.
 - Audit AWS setelah destroy tidak menemukan VPC, NAT Gateway, EC2/ECS/ASG,
@@ -19,6 +20,58 @@ sensitif tetap disimpan di GitHub Actions atau media lokal yang di-ignore.
   sertifikat regional domain utama sengaja dipertahankan.
 - Data Billing dan Cost Explorer harus diperiksa terpisah karena tidak
   real-time.
+
+## Final Research Campaign v2
+
+Campaign `campaign-20260812-f3346ec-671db9f` adalah baseline final untuk BAB 4.
+Lineage dibekukan pada app commit
+`f3346ec59d52830f1dcbf592f905f7fbc4136248`, infra commit
+`671db9fb6cc5c0454c9be334d67ea3b59e7e27f2`, image digest
+`sha256:e08451c0dbc21a84d74c30b9953984306731cafcf2ffe6c89ee571bb83b47ab7`,
+dan input digest
+`sha256:a356d390461a8bc491975aaa703519ea2a9b703c2226d5d940b3190909751cc7`.
+
+Canonical aggregation run `31578428362` menghasilkan artifact
+`canonical-campaign-campaign-20260812-f3346ec-671db9f-31578428362` dengan
+artifact ID `9134123578`, status `final`, dan seluruh sepuluh section `passed`.
+Artifact GitHub berakhir pada `2026-11-10T08:27:47Z`; salinan offline yang
+manifest-nya telah diverifikasi wajib disimpan sebelum tanggal tersebut.
+
+| Area | Final evidence | Source run | Status |
+| --- | --- | --- | --- |
+| App publish | App commit dan image digest immutable sesuai frozen lineage | `31172403493` | Valid final |
+| Cycle R | Plan 16 detik, apply 1.307 detik, verification 71 detik; 141 resource dibuat lalu dihancurkan | Apply `31544258763`; destroy `31548407610` | Valid final |
+| Cycle F | Plan 14 detik, apply 1.195 detik, verification 75 detik; input sama dengan Cycle R | Apply `31549677809`; destroy `31570617948` | Valid final |
+| Fault injection | 6/6 positive-control terdeteksi dan 6/6 delivery diblokir | App `31551535975`, `31551537764`, `31551539727`; infra `31551541553`, `31551543141`, `31551544758` | Valid final |
+| Controlled drift | Satu tag drift diinjeksi, recovery plan tepat satu update, lalu no-change plan | Injection `31551868621`; recovery `31551921512` | Valid final |
+| WAF rate protection | 134 request terbatas, satu HTTP 429, metric dan sampled request cocok, time-to-detect 70,65 detik | `31552432036` | Valid final |
+| Functional | Playwright: 1 expected, 0 unexpected/flaky/skipped, durasi 38.379,895 ms | Runtime `31553375900` | Valid final |
+| Network isolation | 11/11 outcome sesuai; 9 VPC reject berkorelasi, 1 S3 private HTTP 403, 1 positive control sukses | Runtime `31553375900` | Valid final |
+| DAST | 9 alert: 2 informational, 3 low, 4 medium, 0 high; 7 unique rules; 0 confirmed high/critical | Runtime `31553375900` | Valid final; temuan medium/low perlu dibahas per konteks |
+| Load/scaling | 3/3 trial lulus; median p95 82,074 ms; throughput 19,661 req/s; failure rate median 0%; ECS scale-out 3/3 | Runtime `31553375900` | Valid final untuk profil beban terbatas |
+| Monitoring | 9/9 required series terisi; 13 series tersedia; 0 unexpected application error | Runtime `31553375900` | Valid final |
+| Fixture cleanup | Seluruh residual database, object S3, agent, dan temporary resource bernilai nol | Runtime `31553375900`; cleanup `31570286703` | Valid final |
+| Final destroy | Plan 141 destroy; state kosong dan 16 kategori workload bernilai nol; satu ECR prerequisite dipertahankan | `31570617948` | Valid final |
+
+Tiga trial load menghasilkan p95 `82,074`, `80,471`, dan `87,649` ms;
+throughput `19,661`, `19,697`, dan `19,595` request/detik; serta scale-in
+`1.095,340`, `1.043,214`, dan `1.108,781` detik. ASG capacity scaling
+teramati dan berstatus `observed-passed`. Angka tersebut hanya berlaku untuk
+profil, region, commit, image digest, dan periode campaign ini.
+
+CloudWatch mencatat satu pesan error dari negative security probe dengan server
+reference ID malformed `x`. Event mentah tetap ada dalam canonical archive,
+tetapi diklasifikasikan terpisah dari unexpected application error karena
+merupakan input invalid yang sengaja dikirim oleh pengujian. Repeatability
+Cycle R/F membandingkan identitas pemeriksaan, bukan jumlah container instance
+dinamis (4 pada Cycle R dan 6 pada Cycle F).
+
+Audit tambahan menggunakan profil lokal IAM Identity Center tidak selesai pada
+`2026-08-12` karena sesi SSO kedaluwarsa. Hal ini tidak membatalkan evidence
+primer: auditor OIDC dalam destroy run `31570617948` membuktikan state kosong,
+seluruh resource workload berbiaya nol, snapshot final nol, dan hanya satu ECR
+bootstrap yang sengaja dipertahankan. Billing/Cost Explorer tetap perlu dicek
+manual karena data biaya tidak real-time.
 
 ## Superseded Diagnostic Campaign Baseline
 
