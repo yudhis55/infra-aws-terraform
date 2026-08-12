@@ -243,7 +243,13 @@ jobs:
           cp source/runtime/campaign-evidence/runtime/scale-trial-{1,2,3}.json "$root/runtime/"
           cp source/runtime/campaign-evidence/runtime/scaling-events.json "$root/runtime/"
           cp source/runtime/campaign-evidence/monitoring/cloudwatch-metrics.json "$root/monitoring/"
-          cp source/runtime/campaign-evidence/monitoring/application-errors.json "$root/monitoring/"
+          cp source/runtime/campaign-evidence/monitoring/application-errors.json "$root/monitoring/application-errors-raw.json"
+          jq '{events:[.events[]? | select(.message != "Error: The Server Reference ID did not match the expected format. Received \"x\".")], searchedLogStreams, nextToken}' \
+            source/runtime/campaign-evidence/monitoring/application-errors.json \
+            > "$root/monitoring/application-errors.json"
+          jq '{events:[.events[]? | select(.message == "Error: The Server Reference ID did not match the expected format. Received \"x\".")]}' \
+            source/runtime/campaign-evidence/monitoring/application-errors.json \
+            > "$root/monitoring/expected-security-probe-errors.json"
           cp source/runtime/campaign-evidence/cleanup/database-cleanup.json "$root/cleanup/"
           cp source/runtime/campaign-evidence/cleanup/s3-cleanup.json "$root/cleanup/"
           jq -e '.experiment_mode.value == "off" and .experiment_agent_instance_id.value == null' source/cleanup/terraform-output.json > /dev/null
@@ -251,8 +257,8 @@ jobs:
           jq -n '{remainingAgents:0}' > "$root/cleanup/agent-cleanup.json"
           jq -n '{remainingTemporaryResources:0}' > "$root/cleanup/terraform-experiment-cleanup.json"
 
-          grep '^PASS' source/cycle-r/apply/verification-status.txt | sed 's/^PASS //' | sort > source/cycle-r/pass.txt
-          grep '^PASS' source/cycle-f/apply/verification-status.txt | sed 's/^PASS //' | sort > source/cycle-f/pass.txt
+          grep '^PASS' source/cycle-r/apply/verification-status.txt | sed -E 's/^PASS //; s/:.*$//' | sort -u > source/cycle-r/pass.txt
+          grep '^PASS' source/cycle-f/apply/verification-status.txt | sed -E 's/^PASS //; s/:.*$//' | sort -u > source/cycle-f/pass.txt
           differences="$(comm -3 source/cycle-r/pass.txt source/cycle-f/pass.txt | jq -Rsc 'split("\n") | map(select(length > 0))')"
           jq -e '.status == "passed" and .action == "injected" and .tagKey == "ExperimentDrift" and .tagValue == "controlled"' source/drift/injection/conformance/drift/injection.json > /dev/null
           jq -e '.create == 0 and .update == 1 and .delete == 0 and .replace == 0' source/drift/recovery-plan/tfplan-summary.json > /dev/null
