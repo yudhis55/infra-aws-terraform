@@ -264,6 +264,10 @@ test("archives complete campaign evidence even when a research threshold is miss
   assert.doesNotMatch(workflow, /source\/drift\/injection\/campaign-evidence/);
   assert.match(workflow, /faultId, severity, repository, parentAppCommit, parentInfraCommit/);
   assert.match(workflow, /with_entries\(select\(\.value != null\)\)/);
+  assert.match(workflow, /application-errors-raw\.json/);
+  assert.match(workflow, /expected-security-probe-errors\.json/);
+  assert.match(workflow, /Server Reference ID did not match the expected format/);
+  assert.match(workflow, /sed -E 's\/\^PASS \/\/; s\/:\.\*\$\/\/'/);
 });
 
 test("pins the ECS-optimized AL2023 AMI for repeatable campaign inputs", () => {
