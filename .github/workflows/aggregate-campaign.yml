@@ -149,6 +149,20 @@ jobs:
           set -euo pipefail
           root=experiment-evidence
           mkdir -p "$root"/{metadata,delivery,security,functional,runtime,monitoring,cleanup,conformance}
+
+          # Terraform plan artifacts preserve the repository working-directory
+          # layout. Normalize only the copied evidence used by this aggregator.
+          for plan_dir in \
+            source/cycle-r/plan \
+            source/cycle-f/plan \
+            source/modes/agent/plan \
+            source/drift/recovery-plan \
+            source/modes/rate/plan \
+            source/modes/performance/plan; do
+            test -d "$plan_dir/env/dev"
+            cp "$plan_dir"/env/dev/* "$plan_dir/"
+          done
+
           jq -n --arg campaignId "${{ inputs.campaign_id }}" --arg region ap-southeast-3 --arg targetUrl https://eepistore.web.id --arg startedAt "${{ inputs.campaign_started_at }}" --arg endedAt "${{ inputs.campaign_ended_at }}" '{campaignId:$campaignId,region:$region,targetUrl:$targetUrl,startedAt:$startedAt,endedAt:$endedAt}' > "$root/metadata/campaign.json"
           jq -n --arg appCommit "${{ inputs.app_commit_sha }}" --arg infraCommit "${{ inputs.infra_commit_sha }}" --arg imageDigest "${{ inputs.image_digest }}" --arg inputDigest "${{ inputs.campaign_input_digest }}" '{appCommit:$appCommit,infraCommit:$infraCommit,imageDigest:$imageDigest,inputDigest:$inputDigest}' > "$root/metadata/lineage.json"
 
