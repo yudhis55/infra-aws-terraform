@@ -254,6 +254,8 @@ test("archives complete campaign evidence even when a research threshold is miss
   );
   assert.match(workflow, /ALLOW_INCOMPLETE_EVIDENCE: "true"/);
   assert.match(workflow, /\.status == "final" or \.status == "failed"/);
+  assert.match(workflow, /\[\$required\[\] as \$key \| \.\[\$key\]/);
+  assert.doesNotMatch(workflow, /all\(\$required\[\] as \$key;/);
 });
 
 test("pins the ECS-optimized AL2023 AMI for repeatable campaign inputs", () => {
