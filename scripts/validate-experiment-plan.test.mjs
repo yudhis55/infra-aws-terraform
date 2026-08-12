@@ -256,6 +256,8 @@ test("archives complete campaign evidence even when a research threshold is miss
   assert.match(workflow, /\.status == "final" or \.status == "failed"/);
   assert.match(workflow, /\[\$required\[\] as \$key \| \.\[\$key\]/);
   assert.doesNotMatch(workflow, /all\(\$required\[\] as \$key;/);
+  assert.match(workflow, /test -d "\$plan_dir\/env\/dev"/);
+  assert.match(workflow, /cp "\$plan_dir"\/env\/dev\/\* "\$plan_dir\/"/);
 });
 
 test("pins the ECS-optimized AL2023 AMI for repeatable campaign inputs", () => {
