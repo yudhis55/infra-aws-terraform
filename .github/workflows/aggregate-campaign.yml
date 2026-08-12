@@ -243,7 +243,7 @@ jobs:
           grep '^PASS' source/cycle-r/apply/verification-status.txt | sed 's/^PASS //' | sort > source/cycle-r/pass.txt
           grep '^PASS' source/cycle-f/apply/verification-status.txt | sed 's/^PASS //' | sort > source/cycle-f/pass.txt
           differences="$(comm -3 source/cycle-r/pass.txt source/cycle-f/pass.txt | jq -Rsc 'split("\n") | map(select(length > 0))')"
-          jq -e '.status == "passed" and .action == "injected" and .tagKey == "ExperimentDrift" and .tagValue == "controlled"' source/drift/injection/campaign-evidence/conformance/drift/injection.json > /dev/null
+          jq -e '.status == "passed" and .action == "injected" and .tagKey == "ExperimentDrift" and .tagValue == "controlled"' source/drift/injection/conformance/drift/injection.json > /dev/null
           jq -e '.create == 0 and .update == 1 and .delete == 0 and .replace == 0' source/drift/recovery-plan/tfplan-summary.json > /dev/null
           jq -e \
             --arg campaignId "${{ inputs.campaign_id }}" \
