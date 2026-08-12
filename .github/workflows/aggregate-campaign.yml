@@ -219,7 +219,18 @@ jobs:
             jq -n --arg cycleId "cycle-$cycle" --arg runStatus "$status" --arg inputDigest "${{ inputs.campaign_input_digest }}" --arg apply "$apply_run" --arg destroy "$destroy_run" --slurpfile plan "source/cycle-$cycle/plan/plan-timing.json" --slurpfile applyTiming "source/cycle-$cycle/apply/timing/apply-timing.json" --slurpfile verify "source/cycle-$cycle/apply/timing/verification-timing.json" '{cycleId:$cycleId,runStatus:$runStatus,inputDigest:$inputDigest,githubRunIds:{apply:$apply,destroy:$destroy},timings:{plan:$plan[0],apply:$applyTiming[0],verification:$verify[0]}}' > "$root/delivery/cycle-$cycle.json"
           done
 
-          jq -s '.[0] as $lineages | .[1] as $results | [range(0; $lineages|length) as $i | $lineages[$i] + $results[$i]]' \
+          jq -s '
+            .[0] as $lineages
+            | .[1] as $results
+            | [range(0; $lineages|length) as $i
+              | ($lineages[$i] + $results[$i])
+              | {
+                  faultId, severity, repository, parentAppCommit, parentInfraCommit,
+                  mutatedCommit, patchDigest, workflowRunId, expectedControl,
+                  actualControl, runType, runStatus
+                }
+              | with_entries(select(.value != null))]
+          ' \
             <(jq -s '.' source/faults/{auth,sca,image,iac01,iac02,iac03}/lineage.json) \
             <(jq -s '.' source/faults/{auth,sca,image,iac01,iac02,iac03}/result.json) \
             > "$root/metadata/child-fault-lineages.json"
