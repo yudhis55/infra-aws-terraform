@@ -236,7 +236,7 @@ jobs:
           cp source/runtime/campaign-evidence/cleanup/database-cleanup.json "$root/cleanup/"
           cp source/runtime/campaign-evidence/cleanup/s3-cleanup.json "$root/cleanup/"
           jq -e '.experiment_mode.value == "off" and .experiment_agent_instance_id.value == null' source/cleanup/terraform-output.json > /dev/null
-          jq '.cleanupStatus="passed"' source/waf/campaign-evidence/security/waf-rate-protection.json > "$root/security/waf-rate-protection.json"
+          jq '.cleanupStatus="passed"' source/waf/security/waf-rate-protection.json > "$root/security/waf-rate-protection.json"
           jq -n '{remainingAgents:0}' > "$root/cleanup/agent-cleanup.json"
           jq -n '{remainingTemporaryResources:0}' > "$root/cleanup/terraform-experiment-cleanup.json"
 
