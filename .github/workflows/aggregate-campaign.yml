@@ -59,7 +59,7 @@ jobs:
           jq -e '
             ["cycleRApply","cycleRDestroy","cycleFApply","cycleFDestroy","experimentAgent","driftInject","driftRecovery","rateMode","faultAuth","faultSca","faultImage","faultIac01","faultIac02","faultIac03","wafRate","performanceMode","runtime","experimentCleanup"] as $required
             | (keys | sort) == ($required | sort)
-            and all($required[] as $key; .[$key] | type == "string" and test("^[0-9]+$"))
+            and ([$required[] as $key | .[$key] | type == "string" and test("^[0-9]+$")] | all)
           ' <<< "$RUN_IDS_JSON" > /dev/null
           {
             echo "CYCLE_R_APPLY_RUN_ID=$(jq -r '.cycleRApply' <<< "$RUN_IDS_JSON")"
